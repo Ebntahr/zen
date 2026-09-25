@@ -38,12 +38,13 @@ fn loadApps(state: *st.State) void {
     const sp = &state.spotlight;
     sp.items.clearRetainingCapacity();
     sp.text.clearRetainingCapacity();
-    const fd = std.posix.open("launch:apps", .{ .ACCMODE = .RDONLY }, 0) catch return;
-    defer std.posix.close(fd);
+    const zio = @import("zen").io;
+    const fd = zio.open("launch:apps", .{ .ACCMODE = .RDONLY }, 0) catch return;
+    defer zio.close(fd);
     var buf: [16 * 1024]u8 = undefined;
     var n: usize = 0;
     while (n < buf.len) {
-        const got = std.posix.read(fd, buf[n..]) catch break;
+        const got = zio.read(fd, buf[n..]) catch break;
         if (got == 0) break;
         n += got;
     }
@@ -174,7 +175,7 @@ pub fn draw(c: *comp_mod.Compositor, state: *st.State, dirty: Rect) void {
     var style = gfx.GlassStyle.light;
     style.tint = if (dark) Color.rgba(34, 34, 40, 185) else Color.rgba(248, 248, 252, 175);
     const bd = c.prepareBackdrop(f.inset(-32, -32), 18);
-    gfx.glass.drawGlass(c.fb, f, @divTrunc(FIELD_H, 2), bd, style);
+    gfx.glass.drawGlass(canvas, f, @divTrunc(FIELD_H, 2), bd, style);
     const fg: u32 = if (dark) 0xF2FFFFFF else 0xE6000000;
     const sub: u32 = if (dark) 0x8CFFFFFF else 0x80000000;
     icons.drawSymbol(canvas, c.allocator, .magnifier, gfx.RectF.init(@floatFromInt(f.x + 20), @floatFromInt(f.y + 15), 24, 24), pm(sub));
@@ -196,7 +197,7 @@ pub fn draw(c: *comp_mod.Compositor, state: *st.State, dirty: Rect) void {
     const panel = Rect.init(f.x, f.bottom() + 12, f.w, @as(i32, @intCast(count)) * ROW_H + 16);
     if (c.shadow_focused.fits(panel)) c.shadow_focused.draw(canvas, panel.offset(0, 10), Color.rgba(0, 0, 0, 60), null);
     const bd2 = c.prepareBackdrop(panel.inset(-32, -32), 18);
-    gfx.glass.drawGlass(c.fb, panel, 22, bd2, style);
+    gfx.glass.drawGlass(canvas, panel, 22, bd2, style);
     for (res[0..count], 0..) |it, i| {
         const row = Rect.init(panel.x + 8, panel.y + 8 + @as(i32, @intCast(i)) * ROW_H, panel.w - 16, ROW_H);
         const sel = i == state.spotlight.selected;

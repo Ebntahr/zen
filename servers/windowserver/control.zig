@@ -110,7 +110,7 @@ pub fn draw(c: *comp_mod.Compositor, state: *st.State, dirty: Rect) void {
     var style = gfx.GlassStyle.light;
     style.tint = if (dark) Color.rgba(34, 34, 40, 170) else Color.rgba(248, 248, 252, 150);
     const bd = c.prepareBackdrop(p.inset(-32, -32), 18);
-    gfx.glass.drawGlass(c.fb, p, 26, bd, style);
+    gfx.glass.drawGlass(canvas, p, 26, bd, style);
 
     const fg: u32 = if (dark) 0xF2FFFFFF else 0xE6000000;
     const sub: u32 = if (dark) 0x99FFFFFF else 0x8C000000;

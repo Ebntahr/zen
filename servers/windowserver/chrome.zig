@@ -428,6 +428,8 @@ pub fn expandDirty(state: *const st.State, d: Rect) Rect {
     return out;
 }
 
+/// Draw a glass panel, clipped to the region being composed (content
+/// drawn over it is clipped the same way, so it must not paint outside).
 fn glass(c: *Compositor, r: Rect, radius: f32, style: gfx.GlassStyle, dark: bool) void {
     const blur_pad: i32 = 32;
     const bd = c.prepareBackdrop(r.inset(-blur_pad, -blur_pad), 18);
@@ -436,7 +438,7 @@ fn glass(c: *Compositor, r: Rect, radius: f32, style: gfx.GlassStyle, dark: bool
         s.tint = Color.rgba(28, 28, 34, 120);
         s.brightness = 0.9;
     }
-    gfx.glass.drawGlass(c.fb, r, @intFromFloat(radius), bd, s);
+    gfx.glass.drawGlass(c.fb.withClip(c.composing), r, @intFromFloat(radius), bd, s);
 }
 
 fn drawMenuBar(c: *Compositor, state: *st.State, dirty: Rect) void {
@@ -453,7 +455,7 @@ fn drawMenuBar(c: *Compositor, state: *st.State, dirty: Rect) void {
     style.rim_base = 0.05;
     style.tint = if (dark or c.menubar_on_dark) Color.rgba(0, 0, 0, 40) else Color.rgba(255, 255, 255, 50);
     const bd = c.prepareBackdrop(bar.inset(0, -24), 24);
-    gfx.glass.drawGlass(c.fb.withClip(bar), bar.inset(-20, 0).offset(0, -10), 0, bd, style);
+    gfx.glass.drawGlass(c.fb.withClip(bar.intersect(c.composing)), bar.inset(-20, 0).offset(0, -10), 0, bd, style);
 
     const text_color: u32 = if (dark or c.menubar_on_dark) 0xF2FFFFFF else 0xE6000000;
     const baseline: f32 = 20;
@@ -606,7 +608,14 @@ fn drawDock(c: *Compositor, state: *st.State, dirty: Rect) void {
     const dock = dockRect(state);
     layout.dock = dock;
     if (!dock.inset(-40, -70).intersects(dirty)) {
-        // Still lay out item rects for hit testing.
+        // Nothing to draw; still lay out the item rects for hit testing.
+        var lx = dock.x + DOCK_PAD;
+        for (state.dock.items) |*item| {
+            if (std.mem.eql(u8, item.id, "trash")) lx += 14;
+            item.rect = .{ .x = lx, .y = dock.y + DOCK_PAD, .w = DOCK_ICON, .h = DOCK_ICON };
+            lx += DOCK_ICON + DOCK_GAP;
+        }
+        return;
     }
     const dark = state.dark();
     // Shadow under the floating dock.

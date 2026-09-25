@@ -43,6 +43,8 @@ pub const Compositor = struct {
     shadow_popup: gfx.ShadowMask,
     fonts: *ui.FontSet,
     icon_cache: std.StringHashMapUnmanaged(gfx.Image) = .empty,
+    /// The region of the compose in progress (glass is clipped to it).
+    composing: Rect = Rect.init(0, 0, 0, 0),
     wallpaper_variant: u8 = 255,
     wallpaper_dark: bool = false,
     /// The wallpaper behind the menu bar is dark: use light menu bar text
@@ -329,6 +331,7 @@ pub const Compositor = struct {
         var dirty = dirty_in.intersect(self.fb.bounds());
         if (dirty.isEmpty()) return dirty;
         dirty = chrome.expandDirty(state, dirty);
+        self.composing = dirty;
         const c = self.fb.withClip(dirty);
 
         // 1. Wallpaper.
