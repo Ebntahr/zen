@@ -61,6 +61,17 @@ pub fn main() !void {
         @memcpy(win.pixels, hw.pixels);
         _ = state.manager.focus(win.id);
     }
+    if (args.len > 3 and std.mem.eql(u8, args[3], "spotlight")) {
+        const items = [_]ws.state.SpotlightItem{
+            .{ .id = "com.zen.Terminal", .name = "Terminal", .icon = "terminal", .path = "" },
+            .{ .id = "com.zen.TextEdit", .name = "TextEdit", .icon = "textedit", .path = "" },
+            .{ .id = "com.zen.Settings", .name = "Settings", .icon = "settings", .path = "" },
+        };
+        for (items) |it| try state.spotlight.items.append(a, it);
+        state.spotlight.active = true;
+        @memcpy(state.spotlight.query[0..2], "te");
+        state.spotlight.query_len = 2;
+    }
     state.mouse = .{ .x = 700, .y = 740 };
     ws.chrome.dockHover(&state, 700, 740);
     _ = comp.compose(&state, gfx.Rect.init(0, 0, W, H));

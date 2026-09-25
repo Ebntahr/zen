@@ -6,6 +6,7 @@ const wm = @import("wm.zig");
 const st = @import("state.zig");
 const chrome = @import("chrome.zig");
 const protocol = @import("protocol.zig");
+const spotlight = @import("spotlight.zig");
 
 const inp = abi.input;
 const proto = abi.window;
@@ -197,6 +198,10 @@ pub const Input = struct {
             return;
         }
         if (state.switcher.active) return;
+        if (state.spotlight.active) {
+            if (spotlight.click(state, mx, my)) |id| self.activateOrLaunch(id);
+            return;
+        }
 
         if (state.session == .active) {
             if (chrome.menubarContains(state, mx, my)) {
@@ -400,6 +405,20 @@ pub const Input = struct {
             else => false,
         };
 
+        if (state.spotlight.active and !is_mod) {
+            if (state.keys.meta and code == Key.space) {
+                if (value == 1) spotlight.close(state);
+                return;
+            }
+            var tbuf: [8]u8 = undefined;
+            var tlen: usize = 0;
+            if (pressed and !state.keys.ctrl and !state.keys.meta) {
+                const cp = inp.keyToChar(code, state.keys.shift, state.keys.caps, state.keys.arabic);
+                if (cp >= 0x20) tlen = std.unicode.utf8Encode(cp, &tbuf) catch 0;
+            }
+            if (spotlight.key(state, code, tbuf[0..tlen], value)) |id| self.activateOrLaunch(id);
+            return;
+        }
         if (pressed and !is_mod) {
             // Keyboard layout toggle: Alt+Shift or Ctrl+Space.
             if ((state.keys.alt and state.keys.shift and !state.keys.meta) or (state.keys.ctrl and code == Key.space and !state.keys.meta)) {
@@ -427,7 +446,7 @@ pub const Input = struct {
                     return;
                 }
                 if (code == Key.space) {
-                    if (value == 1) self.actions.launch(state, "spotlight");
+                    if (value == 1) spotlight.open(state);
                     return;
                 }
                 const ch = inp.keyToChar(code, false, false, false);

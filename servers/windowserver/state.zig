@@ -63,6 +63,28 @@ pub const MenuOpen = struct {
     rect: Rect = .{},
 };
 
+pub const SpotlightItem = struct {
+    id: []const u8,
+    name: []const u8,
+    icon: []const u8,
+    path: []const u8,
+};
+
+pub const Spotlight = struct {
+    active: bool = false,
+    query: [64]u8 = undefined,
+    query_len: usize = 0,
+    selected: usize = 0,
+    /// All launchable apps (loaded from launch:apps when opened).
+    items: std.ArrayList(SpotlightItem) = .empty,
+    /// Backing storage for item strings.
+    text: std.ArrayList(u8) = .empty,
+
+    pub fn querySlice(self: *const Spotlight) []const u8 {
+        return self.query[0..self.query_len];
+    }
+};
+
 pub const Switcher = struct {
     active: bool = false,
     selected: usize = 0,
@@ -116,6 +138,7 @@ pub const State = struct {
     notifications: std.ArrayList(Notification) = .empty,
     menu: MenuOpen = .{},
     switcher: Switcher = .{},
+    spotlight: Spotlight = .{},
     mouse: Mouse = .{},
     keys: Keyboard = .{},
     clipboard: std.ArrayList(u8) = .empty,

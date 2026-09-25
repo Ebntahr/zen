@@ -5,3 +5,4 @@ pub const compositor = @import("compositor.zig");
 pub const chrome = @import("chrome.zig");
 pub const protocol = @import("protocol.zig");
 pub const cursor = @import("cursor.zig");
+pub const spotlight = @import("spotlight.zig");

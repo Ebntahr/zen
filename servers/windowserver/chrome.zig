@@ -10,6 +10,7 @@ const font = @import("font");
 const wm = @import("wm.zig");
 const st = @import("state.zig");
 const comp_mod = @import("compositor.zig");
+const spotlight = @import("spotlight.zig");
 
 const Canvas = gfx.Canvas;
 const Color = gfx.Color;
@@ -408,6 +409,7 @@ pub fn expandDirty(state: *const st.State, d: Rect) Rect {
         dockRect(state).inset(-4, -4),
         if (state.menu.index >= 0) layout.panel.inset(-4, -4) else Rect.init(0, 0, 0, 0),
         if (state.switcher.active) switcherRect(state).inset(-4, -4) else Rect.init(0, 0, 0, 0),
+        if (state.spotlight.active) spotlight.bounds(state).inset(-4, -4) else Rect.init(0, 0, 0, 0),
     };
     var changed = true;
     while (changed) {
@@ -702,4 +704,5 @@ pub fn draw(c: *Compositor, state: *st.State, dirty: Rect) void {
     drawNotifications(c, state, dirty);
     drawMenuPanel(c, state, dirty);
     drawSwitcher(c, state, dirty);
+    spotlight.draw(c, state, dirty);
 }
