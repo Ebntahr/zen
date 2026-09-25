@@ -451,11 +451,11 @@ fn drawMenuBar(c: *Compositor, state: *st.State, dirty: Rect) void {
     style.bevel = 6;
     style.rim_light = 0.25;
     style.rim_base = 0.05;
-    style.tint = if (dark) Color.rgba(0, 0, 0, 40) else Color.rgba(255, 255, 255, 50);
+    style.tint = if (dark or c.menubar_on_dark) Color.rgba(0, 0, 0, 40) else Color.rgba(255, 255, 255, 50);
     const bd = c.prepareBackdrop(bar.inset(0, -24), 24);
     gfx.glass.drawGlass(c.fb.withClip(bar), bar.inset(-20, 0).offset(0, -10), 0, bd, style);
 
-    const text_color: u32 = if (dark) 0xF2FFFFFF else 0xE6000000;
+    const text_color: u32 = if (dark or c.menubar_on_dark) 0xF2FFFFFF else 0xE6000000;
     const baseline: f32 = 20;
     // Zen menu (logo).
     const logo = Rect.init(14, 7, 16, 16);

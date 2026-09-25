@@ -297,11 +297,8 @@ pub const Input = struct {
             .resize => |edge| state.manager.beginDrag(win, .resize, edge, mx, my),
             .content => |c| {
                 // Full-size-content windows: a press in the title area drags.
+                // Double-clicks go to the app, which zooms if no control was hit.
                 if (!win.hasTitlebar() and win.hasControls() and c.y < win.title_height and button == 1 and state.keys.mods() & proto.Mods.cmd == 0) {
-                    if (state.mouse.click_count == 2 and win.resizable()) {
-                        self.zoom(win);
-                        return;
-                    }
                     self.pending_move = win.id;
                     self.press_x = mx;
                     self.press_y = my;

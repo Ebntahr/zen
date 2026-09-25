@@ -13,6 +13,7 @@ pub const Ui = ui.Ui;
 pub const Rect = ui.Rect;
 pub const Theme = theme.Theme;
 pub const FontSet = fonts.FontSet;
+pub const Weight = fonts.Weight;
 pub const TextState = ui.TextState;
 pub const ScrollState = ui.ScrollState;
 pub const pm = ui.pm;

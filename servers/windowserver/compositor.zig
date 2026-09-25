@@ -45,6 +45,9 @@ pub const Compositor = struct {
     icon_cache: std.StringHashMapUnmanaged(gfx.Image) = .empty,
     wallpaper_variant: u8 = 255,
     wallpaper_dark: bool = false,
+    /// The wallpaper behind the menu bar is dark: use light menu bar text
+    /// even in light mode (as macOS does).
+    menubar_on_dark: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, fb_pixels: []u32, w: i32, h: i32, fonts: *ui.FontSet) !Compositor {
         const uw: u32 = @intCast(w);
@@ -77,6 +80,7 @@ pub const Compositor = struct {
         };
         var path_buf: [128]u8 = undefined;
         const cache = std.fmt.bufPrint(&path_buf, "/var/cache/zen/wallpaper-{s}-{d}x{d}.raw", .{ @tagName(v), self.width, self.height }) catch "";
+        defer self.updateMenubarTone();
         if (loadCache(cache, self.wallpaper.pixels, self.wallpaper_blur.pixels)) return;
         const wc = self.wallpaper.canvas();
         gfx.wallpaper.render(wc, self.allocator, v, .{ .detail = 2 }) catch wc.clear(Color.fromHex(0x2C3E66));
@@ -84,6 +88,27 @@ pub const Compositor = struct {
         bc.blitOpaque(wc, 0, 0);
         gfx.effects.blurFast(bc, self.allocator, bc.bounds(), 28) catch {};
         saveCache(cache, self.wallpaper.pixels, self.wallpaper_blur.pixels);
+    }
+
+    /// Average luminance of the blurred wallpaper under the menu bar.
+    fn updateMenubarTone(self: *Compositor) void {
+        const w: usize = @intCast(self.width);
+        const rows: usize = @intCast(@min(self.height, wm.MENUBAR));
+        var sum: u64 = 0;
+        var n: u64 = 0;
+        var y: usize = 0;
+        while (y < rows) : (y += 4) {
+            var x: usize = 0;
+            while (x < w) : (x += 8) {
+                const p = self.wallpaper_blur.pixels[y * w + x];
+                const r = (p >> 16) & 0xFF;
+                const g = (p >> 8) & 0xFF;
+                const b = p & 0xFF;
+                sum += (r * 54 + g * 183 + b * 19) >> 8;
+                n += 1;
+            }
+        }
+        self.menubar_on_dark = n > 0 and sum / n < 118;
     }
 
     /// Cached wallpaper: the sharp image followed by the blurred one.
@@ -169,7 +194,7 @@ pub const Compositor = struct {
             const cx: f32 = @floatFromInt(p.x);
             const cy: f32 = @floatFromInt(p.y);
             const active = focused or hover_group;
-            const fill = if (active) colors[i] else if (state.dark()) t.traffic_inactive_dark else t.traffic_inactive_light;
+            const fill = if (active) colors[i] else if (state.dark() or win.flags & proto.Flags.dark != 0) t.traffic_inactive_dark else t.traffic_inactive_light;
             c.fillCircle(cx, cy, 6.5, pm(fill));
             c.strokeCircle(cx, cy, 6.5, 0.6, pm(0x26000000));
             if (hover_group) {
@@ -195,7 +220,8 @@ pub const Compositor = struct {
         const focused = state.manager.focused == win.id;
         const frame = toG(win.frame());
         const c = self.fb.withClip(dirty);
-        const dark = state.dark();
+        // Windows may force dark chrome (Calculator, dark terminal profiles).
+        const dark = state.dark() or win.flags & proto.Flags.dark != 0;
         const is_chrome_less = win.flags & (proto.Flags.borderless | proto.Flags.shield | proto.Flags.desktop) != 0;
         const radius: f32 = if (win.layer == .popup) 10 else if (is_chrome_less) 0 else wm.RADIUS;
 

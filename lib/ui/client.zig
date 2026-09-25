@@ -34,6 +34,10 @@ pub const Window = struct {
     height: i32,
     pixels: []align(4096) u32,
     headless: bool,
+    /// Creation flags (abi.window.Flags).
+    flags: u32 = 0,
+    /// Height of the title area of a full-size-content window.
+    title_height: i32 = 32,
     cmd_buf: std.ArrayList(u8) = .empty,
     events: [64]Event = undefined,
 
@@ -57,6 +61,7 @@ pub const Window = struct {
             .height = opts.height,
             .pixels = &.{},
             .headless = false,
+            .flags = opts.flags,
         };
         try win.mapBuffer();
         return win;
@@ -73,6 +78,7 @@ pub const Window = struct {
             .height = opts.height,
             .pixels = pixels,
             .headless = true,
+            .flags = opts.flags,
         };
     }
 
@@ -141,6 +147,7 @@ pub const Window = struct {
     }
 
     pub fn setTitleHeight(self: *Window, h: i32) void {
+        self.title_height = h;
         self.command(.set_title_height, std.mem.asBytes(&h));
     }
 
@@ -152,6 +159,11 @@ pub const Window = struct {
     pub fn requestResize(self: *Window, w: i32, h: i32) void {
         const s = proto.Size{ .w = w, .h = h };
         self.command(.resize, std.mem.asBytes(&s));
+    }
+
+    /// Toggle between the user size and the zoomed (screen-filling) size.
+    pub fn zoom(self: *Window) void {
+        self.command(.zoom, "");
     }
 
     pub fn beginMove(self: *Window) void {

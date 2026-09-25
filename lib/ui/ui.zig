@@ -279,6 +279,16 @@ pub const Ui = struct {
     }
 
     pub fn endFrame(self: *Ui) void {
+        // Full-size-content windows: a double-click on empty title-area space
+        // zooms. The server leaves this to the app so that double-clicks on
+        // toolbar controls stay with the controls.
+        const F = abi.window.Flags;
+        if (self.mouse_pressed and self.click_count == 2 and self.hot == 0 and
+            self.mouse_y >= 0 and self.mouse_y < self.win.title_height and
+            self.win.flags & F.full_size_content != 0 and self.win.flags & F.resizable != 0)
+        {
+            self.win.zoom();
+        }
         if (self.mouse_released) self.active = 0;
         if (self.mouse_pressed and self.hot == 0) self.focus = 0;
         if (self.cursor != self.last_cursor) {
