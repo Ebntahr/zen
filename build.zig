@@ -59,6 +59,9 @@ const tests = [_]Lib{
     .{ .name = "font", .path = "lib/font/root.zig" },
     .{ .name = "vt", .path = "lib/vt/root.zig" },
     .{ .name = "fsd", .path = "servers/fsd/service.zig", .deps = &.{ "abi", "ext2" } },
+    .{ .name = "gfx", .path = "lib/gfx/root.zig" },
+    .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
+    .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
 };
 
 fn makeModules(
