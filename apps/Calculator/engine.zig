@@ -310,8 +310,9 @@ pub const Engine = struct {
                 self.cur = -self.cur;
                 if (self.operand_in_expr) {
                     var tmp: [expr_cap]u8 = undefined;
-                    const inner = tmp[0 .. self.expr_len - self.operand_start];
-                    @memcpy(inner, self.expr[self.operand_start..self.expr_len]);
+                    const src = self.operandExpr();
+                    const inner = tmp[0..src.len];
+                    @memcpy(inner, src);
                     self.truncateExpr(self.operand_start);
                     self.appendExpr("\u{2212}(");
                     self.appendExpr(inner);
@@ -323,6 +324,12 @@ pub const Engine = struct {
 
     pub fn percent(self: *Engine) void {
         if (self.err) return;
+        if (self.after_equals) {
+            // Applies to the result: start a new expression from it.
+            self.expr_len = 0;
+            self.operand_start = 0;
+            self.operand_in_expr = false;
+        }
         const x = self.cur;
         var base: ?f64 = null;
         if (self.no > 0 and self.nv > 0) {
@@ -479,8 +486,9 @@ pub const Engine = struct {
         var inner: []const u8 = undefined;
         var group = false;
         if (self.operand_in_expr) {
-            inner = tmp[0 .. self.expr_len - self.operand_start];
-            @memcpy(@constCast(inner), self.expr[self.operand_start..self.expr_len]);
+            const src = self.operandExpr();
+            @memcpy(tmp[0..src.len], src);
+            inner = tmp[0..src.len];
             group = self.operand_group;
         } else {
             var nb: [64]u8 = undefined;
@@ -590,6 +598,11 @@ pub const Engine = struct {
         self.entry_len = 0;
         self.mode = .typing;
         self.cur = 0;
+    }
+
+    /// Text of the current operand in the expression.
+    fn operandExpr(self: *const Engine) []const u8 {
+        return self.expr[@min(self.operand_start, self.expr_len)..self.expr_len];
     }
 
     fn appendEntry(self: *Engine, c: u8) void {
@@ -1260,6 +1273,12 @@ test "expression line" {
     e.allClear();
     keys(&e, "50+10%=");
     try testing.expectEqualStrings("50+10%", e.expression());
+    keys(&e, "%");
+    try expectDisplay(&e, "0.55");
+    try testing.expectEqualStrings("55%", e.expression());
+    keys(&e, "n");
+    try expectDisplay(&e, "-0.55");
+    try testing.expectEqualStrings("\u{2212}(55%)", e.expression());
 }
 
 test "paste and copy" {
@@ -1276,4 +1295,31 @@ test "paste and copy" {
     try expectDisplay(&e, "0.5");
     try testing.expect(e.paste("1e20"));
     try expectDisplay(&e, "1e20");
+}
+
+test "random key sequences keep the engine consistent" {
+    var prng = std.Random.DefaultPrng.init(0x5EED);
+    const rnd = prng.random();
+    const all_keys = "0123456789.+-*/^=%ncb()";
+    const funcs = std.enums.values(Func);
+    var buf: [64]u8 = undefined;
+    for (0..200) |_| {
+        var e = Engine{ .max_digits = if (rnd.boolean()) 9 else 12 };
+        for (0..300) |_| {
+            if (rnd.uintLessThan(u8, 10) == 0) {
+                e.function(funcs[rnd.uintLessThan(usize, funcs.len)]);
+            } else if (rnd.uintLessThan(u8, 40) == 0) {
+                _ = e.paste("-12,345.678");
+            } else if (rnd.uintLessThan(u8, 40) == 0) {
+                e.constant(std.math.pi);
+            } else {
+                keys(&e, all_keys[rnd.uintLessThan(usize, all_keys.len)..][0..1]);
+            }
+            const d = e.display(&buf);
+            try testing.expect(d.len > 0 and d.len <= 40);
+            try testing.expect(e.expr_len <= expr_cap);
+            try testing.expect(e.nv <= max_depth and e.no <= max_depth);
+            if (!e.err) try testing.expect(std.math.isFinite(e.cur));
+        }
+    }
 }

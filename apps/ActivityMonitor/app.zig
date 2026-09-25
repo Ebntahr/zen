@@ -207,6 +207,9 @@ pub const App = struct {
     app_icons: std.EnumArray(icons.AppIcon, ?gfx.Image) = .initFill(null),
     gear_icon: ?gfx.Image = null,
     menu_buf: [1024]u8 = undefined,
+    /// Whether the last menu sent had the process items enabled.
+    menu_sel: bool = false,
+    uts: ?std.os.linux.utsname = null,
 
     pub fn init(allocator: std.mem.Allocator, u: *Ui) !App {
         u.win.setTitleHeight(toolbar_h);
@@ -214,6 +217,8 @@ pub const App = struct {
             .allocator = allocator,
             .sampler = procs.Sampler.init(allocator),
         };
+        var uts: std.os.linux.utsname = undefined;
+        if (std.os.linux.uname(&uts) == 0) app.uts = uts;
         app.refreshNow();
         return app;
     }
@@ -263,6 +268,7 @@ pub const App = struct {
         mw.separator();
         mw.item(menu_update, "Update Now", 'r', 0, 0);
         mw.separator();
+        self.menu_sel = self.selected != null;
         const sel: u8 = if (self.selected == null) disabled else 0;
         mw.item(menu_inspect, "Inspect Process", 'i', 0, sel);
         mw.item(menu_quit_process, "Quit Process", 'q', @intCast(Mods.cmd | Mods.alt), sel);
@@ -374,6 +380,8 @@ pub const App = struct {
             if (sheet_before != .none) saved.restore(u) else InputState.block(u);
             self.drawSheet(u, &sb);
         }
+        // Keep "Inspect Process" / "Quit Process" enabled only with a selection.
+        if ((self.selected != null) != self.menu_sel) self.resendMenu(u);
     }
 
     // ------------------------------------------------------------------
@@ -445,9 +453,8 @@ pub const App = struct {
         if (glassSegmented(u, "am-tabs", l.seg, &tab_titles, &idx)) self.setTab(u, @enumFromInt(idx));
 
         self.drawSearch(u, l.search);
-
-        // Drag the window from empty toolbar space.
-        if (u.mouse_pressed and r.contains(u.mouse_x, u.mouse_y) and u.hot == 0) u.win.beginMove();
+        // The toolbar is the window's title area (set_title_height): the
+        // window server moves the window when a press there is dragged.
     }
 
     fn drawSearch(self: *App, u: *Ui, r: Rect) void {
@@ -757,11 +764,10 @@ pub const App = struct {
                 });
             },
             .system => {
-                var uts: std.os.linux.utsname = undefined;
-                const have_uts = std.os.linux.uname(&uts) == 0;
-                const sysname = if (have_uts) std.mem.sliceTo(&uts.sysname, 0) else "?";
-                const release = if (have_uts) std.mem.sliceTo(&uts.release, 0) else "";
-                const host = if (have_uts) std.mem.sliceTo(&uts.nodename, 0) else "";
+                const uts = if (self.uts) |*x| x else null;
+                const sysname = if (uts) |x| std.mem.sliceTo(&x.sysname, 0) else "?";
+                const release = if (uts) |x| std.mem.sliceTo(&x.release, 0) else "";
+                const host = if (uts) |x| std.mem.sliceTo(&x.nodename, 0) else "";
                 const os = if (s.on_zen) sb.print("{s} {s} \u{201C}{s}\u{201D}", .{ abi.os_name, abi.os_version, abi.os_codename }) else sb.keep(sysname);
                 var sandboxed: u64 = 0;
                 for (s.procs.items) |p| {
@@ -1022,7 +1028,7 @@ const ToolIcon = enum { stop, info };
 fn toolbarButton(u: *Ui, id_str: []const u8, r: Rect, icon: ToolIcon, enabled: bool) bool {
     const t = u.theme;
     const id = ui.ui.hashId(id_str);
-    const clicked = enabled and u.interact(id, r);
+    const clicked = u.interact(id, r) and enabled;
     const radius: f32 = @as(f32, @floatFromInt(r.h)) / 2;
     if (enabled and u.isActive(id) and u.hovering(r)) {
         u.fillRound(r, radius, t.selection_inactive);

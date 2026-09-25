@@ -368,8 +368,9 @@ pub const App = struct {
         // Display.
         self.drawDisplay(u, Rect.init(pad_x + 4, title_h - 4, w - 2 * pad_x - 8, grid_top - title_h - 4), sci_visible);
 
-        // Drag the window from the display area (no title bar).
-        if (u.mouse_pressed and !any_hot and u.mouse_y < grid_top - 4 and u.mouse_y >= 0) {
+        // Drag the window from the display area. The window server already
+        // handles presses in the title area (y < title_h) itself.
+        if (u.mouse_pressed and !any_hot and u.mouse_y >= title_h and u.mouse_y < grid_top - 4) {
             u.win.beginMove();
         }
     }
