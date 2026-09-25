@@ -77,8 +77,8 @@ pub fn drawKeyboard(app: *App, u: *Ui, f: *Form) void {
     }
     {
         const r = f.row(52);
-        w.letterTile(u, Rect.init(r.x + pad, r.y + 14, 24, 24), "AR", w.tint.green);
-        f.label2(r, r.x + pad + 36, "Arabic", "Arabic (PC) · right-to-left");
+        w.letterTile(u, Rect.init(r.x + pad, r.y + 14, 24, 24), "ع", w.tint.green);
+        f.label2(r, r.x + pad + 36, "العربية", "Arabic (PC) · right-to-left");
         if (f.toggle(r, "arabic-input", &app.prefs.arabic_input)) app.savePrefs();
     }
     f.sep_inset = pad;

@@ -73,15 +73,12 @@ pub const TileGlyph = union(enum) {
     appearance,
     /// Sun with rays (Displays).
     sun,
-    /// Letters drawn with the UI font are not cached; this is for symbols only.
-    none,
 
     fn code(g: TileGlyph) u64 {
         return switch (g) {
             .sym => |s| @intFromEnum(s),
             .appearance => 200,
             .sun => 201,
-            .none => 255,
         };
     }
 };
@@ -141,16 +138,6 @@ pub const IconCache = struct {
         icons.drawApp(img.canvas(), self.allocator, icon, RectF.init(0, 0, s, s));
         return self.put(key, img);
     }
-
-    /// Store an externally rendered image under `key` (takes ownership).
-    pub fn custom(self: *IconCache, key: u64) ?gfx.Canvas {
-        if (self.map.get(key | (4 << 60))) |img| return img.canvas();
-        return null;
-    }
-
-    pub fn putCustom(self: *IconCache, key: u64, img: gfx.Image) ?gfx.Canvas {
-        return self.put(key | (4 << 60), img);
-    }
 };
 
 fn luma(c: u32) u32 {
@@ -200,7 +187,6 @@ fn drawTile(c: gfx.Canvas, a: std.mem.Allocator, glyph: TileGlyph, color: u32, s
                 c.drawLine(cx + size * 0.25 * @cos(ang), cy + size * 0.25 * @sin(ang), cx + size * 0.33 * @cos(ang), cy + size * 0.33 * @sin(ang), @max(1.2, size * 0.07), white);
             }
         },
-        .none => {},
     }
 }
 

@@ -248,6 +248,8 @@ pub const PreviewTarget = struct {
     sheet: SheetKind = .none,
     /// Scroll the content this far down (applied once its height is known).
     scroll: f32 = 0,
+    /// Open the pop-up button with this id.
+    popup: ?[]const u8 = null,
 };
 pub var preview_target: ?PreviewTarget = null;
 
@@ -261,7 +263,7 @@ pub const App = struct {
         .width = 780,
         .height = 560,
         .min_width = 740,
-        .min_height = 440,
+        .min_height = 480,
         .flags = abi.window.Flags.full_size_content | abi.window.Flags.resizable | abi.window.Flags.transparent,
     };
 
@@ -302,6 +304,7 @@ pub const App = struct {
     notice_buf: [160]u8 = undefined,
     notice: []const u8 = "",
     pending_scroll: f32 = 0,
+    pending_popup: ui.ui.Id = 0,
 
     // Pane data.
     about: general.AboutData = .{},
@@ -391,13 +394,34 @@ pub const App = struct {
     pub fn go(self: *App, loc: Loc) void {
         if (self.loc.pane == loc.pane and self.loc.sub == loc.sub) return;
         self.popup.open = false;
-        self.hist_pos = @min(self.hist_pos + 1, self.history.len - 1);
+        if (self.hist_pos + 1 >= self.history.len) {
+            // History is full: drop the oldest entry.
+            std.mem.copyForwards(Loc, self.history[0 .. self.history.len - 1], self.history[1..]);
+        } else {
+            self.hist_pos += 1;
+        }
         self.history[self.hist_pos] = loc;
         self.hist_len = self.hist_pos + 1;
         self.loc = loc;
         self.scroll.offset = 0;
         self.notice = "";
         self.menu_dirty = true;
+        self.entered();
+    }
+
+    /// Cheap pane data is re-read each time its pane is entered (never per
+    /// frame). Code-signature checks stay cached for the session.
+    fn entered(self: *App) void {
+        if (self.headless) return; // keep preview sample data
+        switch (self.loc.pane) {
+            .users => self.users.loaded = false,
+            .storage => self.storage.loaded = false,
+            .developer => self.dev.checked = false,
+            .general => if (self.loc.sub == .about) {
+                self.about.loaded = false;
+            },
+            else => {},
+        }
     }
 
     pub fn back(self: *App) void {
@@ -406,6 +430,7 @@ pub const App = struct {
         self.loc = self.history[self.hist_pos];
         self.scroll.offset = 0;
         self.menu_dirty = true;
+        self.entered();
     }
 
     pub fn forward(self: *App) void {
@@ -414,6 +439,7 @@ pub const App = struct {
         self.loc = self.history[self.hist_pos];
         self.scroll.offset = 0;
         self.menu_dirty = true;
+        self.entered();
     }
 
     // ------------------------------------------------------------------
@@ -468,6 +494,8 @@ pub const App = struct {
     }
 
     pub fn onMenu(self: *App, u: *Ui, id: u32) void {
+        // While a sheet is up only editing and quitting make sense.
+        if (self.sheet != .none and id != MenuId.quit and (id < MenuId.cut or id > MenuId.select_all)) return;
         switch (id) {
             MenuId.about => self.openSheet(u, .about_app),
             MenuId.quit => u.quit = true,
@@ -476,7 +504,7 @@ pub const App = struct {
             MenuId.forward => self.forward(),
             MenuId.find => u.focus = hashId("search"),
             else => if (id >= MenuId.pane and id < MenuId.pane + pane_list.len) {
-                if (self.sheet == .none) self.go(.{ .pane = pane_list[id - MenuId.pane].pane });
+                self.go(.{ .pane = pane_list[id - MenuId.pane].pane });
             },
         }
     }
@@ -538,7 +566,10 @@ pub const App = struct {
         const id = hashId(id_str);
         const cur = items[@min(value.*, items.len - 1)];
         const b = w.popupButton(u, id, right_x, cy, cur, true);
-        if (b.clicked) self.openPopup(u, id, b.rect, items, value);
+        if (b.clicked or self.pending_popup == id) {
+            self.pending_popup = 0;
+            self.openPopup(u, id, b.rect, items, value);
+        }
         if (self.popup.changed_id == id) {
             self.popup.changed_id = 0;
             return true;
@@ -641,7 +672,9 @@ pub const App = struct {
         const t = u.theme;
         u.fillRect(u.bounds(), if (t.dark) 0x66000000 else 0x33000000);
         const x = @divTrunc(u.width() - width, 2) + @divTrunc(sidebar_w, 3);
-        const y = @max(toolbar_h - 8, @divTrunc(u.height() - height, 3));
+        // Upper third of the window, but always fully visible.
+        var y = @max(toolbar_h - 8, @divTrunc(u.height() - height, 3));
+        y = @max(6, @min(y, u.height() - height - 8));
         const r = Rect.init(@max(12, x), y, width, height);
         u.shadow(r, 18, 22, 10, if (t.dark) 0xA0000000 else 0x50000000);
         u.fillRound(r, 18, if (t.dark) 0xFF2B2B2F else 0xFFF8F8FA);
@@ -673,8 +706,8 @@ pub const App = struct {
     }
 
     // ------------------------------------------------------------------
-    // Jobs (run on the frame after they are requested so the UI can first
-    // show a "working" state)
+    // Jobs: privileged helpers and scans run on the frame after they are
+    // requested, so the UI first shows a "working…" state.
     // ------------------------------------------------------------------
 
     pub fn startJob(self: *App, job: Job) void {
@@ -735,9 +768,10 @@ pub const App = struct {
         self.drawContent(u);
         self.drawSidebar(u);
 
-        // Dragging the window by its toolbar / the top of the sidebar.
-        if (interactive and !modal and !self.popup.open and u.mouse_pressed and u.hot == 0 and u.mouse_y < toolbar_h) {
-            if (u.click_count >= 2) u.win.command(.zoom, "") else u.win.beginMove();
+        // Dragging the window by its toolbar / the top of the sidebar (the
+        // toolkit zooms on a double-click there).
+        if (interactive and !modal and !self.popup.open and u.mouse_pressed and u.hot == 0 and u.mouse_y < toolbar_h and u.click_count < 2) {
+            u.win.beginMove();
         }
 
         if (modal) {
@@ -940,7 +974,7 @@ pub const App = struct {
         w.chevron(u, @floatFromInt(br.x + 17), cy, 5, .left, 1.8, if (can_back) t.label else t.tertiary_label);
         w.chevron(u, @floatFromInt(fr.x + 15), cy, 5, .right, 1.8, if (can_fwd) t.label else t.tertiary_label);
         const title = if (self.loc.sub != .none) subTitle(self.loc.sub) else paneInfo(self.loc.pane).title;
-        u.text(Rect.init(cap.right() + 14, 0, bar.right() - cap.right() - 28, toolbar_h), title, .{ .size = 15, .weight = .bold });
+        u.text(Rect.init(cap.right() + 14, 0, bar.right() - cap.right() - 28, toolbar_h), title, .{ .size = 17, .weight = .bold });
     }
 
     // ------------------------------------------------------------------
@@ -962,6 +996,7 @@ pub const App = struct {
         self.hist_len = if (root) 1 else 2;
         self.hist_pos = if (root) 0 else 1;
         self.pending_scroll = target.scroll;
+        if (target.popup) |p| self.pending_popup = hashId(p);
         if (target.sheet != .none) {
             self.openSheet(u, target.sheet);
             accounts.previewSheet(self, target.sheet);

@@ -127,7 +127,7 @@ pub fn draw(app: *App, u: *Ui, f: *Form) void {
         const r = f.row(row_h);
         u.text(r, "No user accounts found", .{ .color = t.secondary_label, .@"align" = .center });
     }
-    for (d.list, 0..) |usr, i| {
+    for (d.list) |usr| {
         const r = f.row(row_h);
         const cy = Form.centerY(r);
         u.avatar(@floatFromInt(r.x + pad + 18), @floatFromInt(cy), 18, usr.full);
@@ -140,11 +140,8 @@ pub fn draw(app: *App, u: *Ui, f: *Form) void {
         if (me) {
             if (w.pushButton(u, "change-password", r.right() - pad, cy, "Change Password…", .normal, true)) app.openSheet(u, .change_password);
         } else {
-            var id_buf: [32]u8 = undefined;
-            const id_s = std.fmt.bufPrint(&id_buf, "{s}", .{usr.name}) catch "";
-            u.text(Rect.init(r.right() - pad - 160, r.y, 160, r.h), id_s, .{ .size = 12, .color = t.tertiary_label, .@"align" = .right });
+            u.text(Rect.init(r.right() - pad - 160, r.y, 160, r.h), usr.name, .{ .size = 12, .color = t.tertiary_label, .@"align" = .right });
         }
-        _ = i;
     }
     f.end();
 

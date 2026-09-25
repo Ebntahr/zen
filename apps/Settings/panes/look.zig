@@ -20,14 +20,14 @@ const Accent = ui.theme.Accent;
 // ---------------------------------------------------------------------------
 
 pub const wallpapers = [_]struct { variant: gfx.wallpaper.Variant, blurb: []const u8 }{
-    .{ .variant = .tahoe_day, .blurb = "Morning light over Lake Tahoe" },
+    .{ .variant = .tahoe_day, .blurb = "Dynamic: turns to night in Dark mode" },
     .{ .variant = .tahoe_night, .blurb = "Lake Tahoe under the stars" },
     .{ .variant = .golden_gate, .blurb = "Sunset over the Golden Gate" },
     .{ .variant = .aurora, .blurb = "Northern lights over the fjords" },
 };
 
-const thumb_w = 240;
-const thumb_h = 150;
+const thumb_w = 200;
+const thumb_h = 125;
 
 pub const Thumbs = struct {
     imgs: [wallpapers.len]?gfx.Image = [_]?gfx.Image{null} ** wallpapers.len,

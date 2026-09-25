@@ -46,6 +46,11 @@ const shots = [_]Shot{
     .{ .name = "scrolled-displays", .target = .{ .pane = .displays, .scroll = 1000 } },
     .{ .name = "scrolled-keyboard", .target = .{ .pane = .keyboard, .scroll = 1000 } },
     .{ .name = "scrolled-about", .target = .{ .pane = .general, .sub = .about, .scroll = 1000 } },
+    .{ .name = "popup-timezone", .target = .{ .pane = .general, .sub = .date_time, .popup = "tz" } },
+    .{ .name = "popup-region", .target = .{ .pane = .general, .sub = .language, .popup = "region" } },
+    .{ .name = "small-lock", .target = .{ .pane = .lock_screen }, .w = 740, .h = 480 },
+    .{ .name = "small-privacy", .target = .{ .pane = .privacy }, .w = 740, .h = 480 },
+    .{ .name = "small-adduser", .target = .{ .pane = .users, .sheet = .add_user }, .w = 740, .h = 480 },
     .{ .name = "large-appearance", .target = .{ .pane = .appearance }, .w = 1040, .h = 700 },
 };
 

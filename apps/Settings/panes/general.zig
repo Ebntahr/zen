@@ -309,7 +309,7 @@ fn drawLanguage(app: *App, u: *Ui, f: *Form) void {
     f.header("Preferred Languages");
     const langs = [_][3][]const u8{
         .{ "English", "English (US)", "EN" },
-        .{ "Arabic", "Arabic, right-to-left", "AR" },
+        .{ "العربية", "Arabic, right-to-left", "ع" },
     };
     _ = f.begin(2 * (w.row_h + 6));
     f.sep_inset = pad + 34;
