@@ -12,6 +12,7 @@ const abi = @import("abi");
 const zen = @import("zen");
 const icons = @import("icons");
 const editor_mod = @import("editor.zig");
+const find_mod = @import("find.zig");
 
 const Editor = editor_mod.Editor;
 const Ui = ui.Ui;
@@ -24,6 +25,7 @@ const hashId = ui.ui.hashId;
 const pm = ui.pm;
 
 const TOOLBAR_H: i32 = 44;
+const FIND_ROW_H: i32 = 38;
 const max_path = 1024;
 const max_file = 32 << 20;
 
@@ -42,6 +44,9 @@ pub const PreviewOptions = struct {
     dirty: bool = false,
     sheet: enum { none, save, open, confirm } = .none,
     sheet_text: []const u8 = "",
+    /// Open the find bar with this query (and the replace row).
+    find: ?[]const u8 = null,
+    replace: ?[]const u8 = null,
 };
 pub var preview_options: ?PreviewOptions = null;
 
@@ -66,6 +71,11 @@ pub const M = struct {
     pub const actual = 32;
     pub const wrap = 33;
     pub const mono = 34;
+    pub const find = 40;
+    pub const find_replace = 41;
+    pub const find_next = 42;
+    pub const find_previous = 43;
+    pub const find_selection = 44;
 };
 
 const Sheet = enum { none, open, save, confirm, alert };
@@ -120,6 +130,13 @@ pub const App = struct {
     alert_body_len: usize = 0,
     icon_cache: std.AutoHashMapUnmanaged(u32, gfx.Image) = .empty,
 
+    // Find bar.
+    find_open: bool = false,
+    find_replace: bool = false,
+    find_field: TextState = .{},
+    replace_field: TextState = .{},
+    finder: find_mod.Find = .{},
+
     needs_redraw: bool = true,
     last_mx: i32 = -1,
     last_my: i32 = -1,
@@ -170,6 +187,13 @@ pub const App = struct {
                     self.pending = .close;
                 },
             }
+            if (p.find) |q| {
+                self.find_field.set(allocator, q);
+                self.openFind(u, p.replace != null);
+                if (p.replace) |r| self.replace_field.set(allocator, r);
+                self.finder.refresh(allocator, &self.editor, q);
+                _ = self.finder.step(&self.editor, true);
+            }
         } else {
             var args = std.process.args();
             _ = args.next();
@@ -182,6 +206,9 @@ pub const App = struct {
     pub fn deinit(self: *App) void {
         self.editor.deinit();
         self.field.deinit(self.allocator);
+        self.find_field.deinit(self.allocator);
+        self.replace_field.deinit(self.allocator);
+        self.finder.deinit(self.allocator);
         self.sheet_entries.deinit(self.allocator);
         self.sheet_names.deinit();
         var it = self.icon_cache.valueIterator();
@@ -448,6 +475,7 @@ pub const App = struct {
         if (self.editor.style.mono) f |= 8;
         if (self.editor.isDirty() and self.docPath() != null) f |= 16;
         if (self.editor.hasSelection()) f |= 32;
+        if (self.find_field.text().len > 0) f |= 64;
         return f;
     }
 
@@ -481,6 +509,12 @@ pub const App = struct {
         mw.item(M.paste, "Paste", 'v', 0, 0);
         mw.item(M.delete, "Delete", 0, 0, if (st & 32 == 0) dis else 0);
         mw.item(M.select_all, "Select All", 'a', 0, 0);
+        mw.separator();
+        mw.item(M.find, "Find\u{2026}", 'f', 0, 0);
+        mw.item(M.find_replace, "Find and Replace\u{2026}", 'f', @intCast(Mods.cmd | Mods.alt), 0);
+        mw.item(M.find_next, "Find Next", 'g', 0, if (st & 64 == 0) dis else 0);
+        mw.item(M.find_previous, "Find Previous", 'G', 0, if (st & 64 == 0) dis else 0);
+        mw.item(M.find_selection, "Use Selection for Find", 'e', 0, if (st & 32 == 0) dis else 0);
         mw.endMenu();
 
         mw.beginMenu("View");
@@ -501,8 +535,9 @@ pub const App = struct {
         u.win.setMenu(mw.bytes());
     }
 
-    fn textFieldFocused(u: *Ui) bool {
-        return u.focus == hashId("sheet-field");
+    /// The find or replace field has the keyboard.
+    fn findFocused(self: *const App, u: *Ui) bool {
+        return self.find_open and (u.focus == hashId("find-field") or u.focus == hashId("replace-field"));
     }
 
     fn injectKey(u: *Ui, code: u16, mods: u32) void {
@@ -524,8 +559,27 @@ pub const App = struct {
             }
             return;
         }
+        // Clipboard commands go to the find bar's field when it has focus.
+        if (self.findFocused(u)) {
+            switch (id) {
+                M.cut => return injectKey(u, Key.x, Mods.cmd),
+                M.copy => return injectKey(u, Key.c, Mods.cmd),
+                M.paste => return injectKey(u, Key.v, Mods.cmd),
+                M.select_all => return injectKey(u, Key.a, Mods.cmd),
+                else => {},
+            }
+        }
         const e = &self.editor;
         switch (id) {
+            M.find => self.openFind(u, false),
+            M.find_replace => self.openFind(u, true),
+            M.find_next => self.findStep(true),
+            M.find_previous => self.findStep(false),
+            M.find_selection => if (e.hasSelection()) {
+                const sel = e.selectedText();
+                const line = sel[0 .. std.mem.indexOfScalar(u8, sel, '\n') orelse sel.len];
+                self.find_field.set(self.allocator, line[0..@min(line.len, 256)]);
+            },
             M.about => self.showAlert("TextEdit 1.0", .{}, "A plain-text editor for Zen OS.", .{}),
             M.quit => self.request(u, .quit),
             M.close => self.request(u, .close),
@@ -592,8 +646,14 @@ pub const App = struct {
     // Frame
     // ------------------------------------------------------------------
 
-    fn editorArea(u: *Ui) Rect {
-        return Rect.init(0, TOOLBAR_H, u.width(), u.height() - TOOLBAR_H);
+    fn findBarHeight(self: *const App) i32 {
+        if (!self.find_open) return 0;
+        return if (self.find_replace) 2 * FIND_ROW_H else FIND_ROW_H;
+    }
+
+    fn editorArea(self: *const App, u: *Ui) Rect {
+        const top = TOOLBAR_H + self.findBarHeight();
+        return Rect.init(0, top, u.width(), u.height() - top);
     }
 
     /// Frames caused only by the pointer moving over the text need no redraw.
@@ -605,7 +665,7 @@ pub const App = struct {
         if (u.width() != self.last_w or u.height() != self.last_h) return false;
         if (u.mouse_x == self.last_mx and u.mouse_y == self.last_my) return true;
         if (self.sheet != .none) return false;
-        const area = editorArea(u);
+        const area = self.editorArea(u);
         return area.contains(u.mouse_x, u.mouse_y) and area.contains(self.last_mx, self.last_my);
     }
 
@@ -613,7 +673,7 @@ pub const App = struct {
         if (self.isIdle(u)) {
             self.last_mx = u.mouse_x;
             self.last_my = u.mouse_y;
-            u.cursor = if (editorArea(u).contains(u.mouse_x, u.mouse_y) and self.sheet == .none) .ibeam else u.last_cursor;
+            u.cursor = if (self.editorArea(u).contains(u.mouse_x, u.mouse_y) and self.sheet == .none) .ibeam else u.last_cursor;
             return;
         }
         self.needs_redraw = false;
@@ -626,16 +686,18 @@ pub const App = struct {
         self.last_h = u.height();
 
         const t = u.theme;
-        const area = editorArea(u);
+        const area = self.editorArea(u);
         const e = &self.editor;
         e.ensureLayout(u, @as(f32, @floatFromInt(area.w)) - 2 * editor_mod.pad_x);
 
-        // Input goes to the editor unless a sheet is up.
+        // Input goes to the editor unless a sheet is up or the find bar
+        // has the keyboard.
         const modal = self.sheet != .none;
         if (!modal) {
+            if (u.mouse_pressed and area.contains(u.mouse_x, u.mouse_y)) u.focus = 0;
             const lh = e.lineHeight(u);
             const page: usize = @intFromFloat(@max(1, @floor(@as(f32, @floatFromInt(area.h)) / lh)));
-            if (u.key_count > 0 or u.text_len > 0) _ = e.handleKeys(u, page);
+            if (!self.findFocused(u) and (u.key_count > 0 or u.text_len > 0)) _ = e.handleKeys(u, page);
             e.handleMouse(u, area);
         } else {
             for (u.keys[0..u.key_count]) |k| {
@@ -650,15 +712,27 @@ pub const App = struct {
 
         const saved = maskInput(u, modal);
         self.drawToolbar(u);
+        if (self.find_open) self.drawFindBar(u, modal);
         e.ensureLayout(u, @as(f32, @floatFromInt(area.w)) - 2 * editor_mod.pad_x);
+        if (self.find_open) {
+            self.finder.refresh(self.allocator, e, self.find_field.text());
+            e.highlights = self.finder.matches.items;
+            e.highlight_current = if (self.finder.selectionIsMatch(e)) self.finder.current else null;
+        } else {
+            e.highlights = &.{};
+            e.highlight_current = null;
+        }
+        const editor_focus = u.focused and !modal and !self.findFocused(u);
         const paper: u32 = if (t.dark) 0xFF1E1E20 else 0xFFFFFFFF;
         e.draw(u, area, .{
             .bg = paper,
             .text = if (t.dark) 0xFFE8E8EA else 0xFF1D1D1F,
-            .selection = if (u.focused and !modal) ui.ui.withAlpha(t.accent, if (t.dark) 0x80 else 0x4D) else (if (t.dark) @as(u32, 0xFF46464A) else 0xFFDCDCE0),
+            .selection = if (editor_focus) ui.ui.withAlpha(t.accent, if (t.dark) 0x80 else 0x4D) else (if (t.dark) @as(u32, 0xFF46464A) else 0xFFDCDCE0),
             .caret = t.accent,
             .scrollbar = if (t.dark) 0x66FFFFFF else 0x50000000,
-        }, u.focused and !modal);
+            .find = if (t.dark) 0x66A07800 else 0x66FFE14D,
+            .find_current = if (t.dark) 0xFFA07800 else 0xFFFFD60A,
+        }, editor_focus);
         restoreInput(u, saved);
 
         switch (self.sheet) {
@@ -732,6 +806,149 @@ pub const App = struct {
         u.mouse_pressed = s.pressed;
         u.mouse_released = s.released;
         u.mouse_down = s.down;
+    }
+
+    // ------------------------------------------------------------------
+    // Find bar
+    // ------------------------------------------------------------------
+
+    fn openFind(self: *App, u: *Ui, replace: bool) void {
+        self.find_open = true;
+        if (replace) self.find_replace = true;
+        // Start from the selection, like macOS.
+        const e = &self.editor;
+        if (self.find_field.text().len == 0 and e.hasSelection()) {
+            const sel = e.selectedText();
+            if (std.mem.indexOfScalar(u8, sel, '\n') == null) self.find_field.set(self.allocator, sel[0..@min(sel.len, 256)]);
+        }
+        self.find_field.anchor = 0;
+        self.find_field.cursor = self.find_field.text().len;
+        u.focus = hashId("find-field");
+        self.needs_redraw = true;
+    }
+
+    fn closeFind(self: *App, u: *Ui) void {
+        self.find_open = false;
+        self.find_replace = false;
+        u.focus = 0;
+        self.needs_redraw = true;
+    }
+
+    fn findStep(self: *App, forward: bool) void {
+        const q = self.find_field.text();
+        if (q.len == 0) return;
+        self.finder.refresh(self.allocator, &self.editor, q);
+        _ = self.finder.step(&self.editor, forward);
+        self.needs_redraw = true;
+    }
+
+    fn findStatus(self: *const App, buf: []u8) []const u8 {
+        if (self.find_field.text().len == 0) return "";
+        const n = self.finder.matches.items.len;
+        if (n == 0) return "Not found";
+        if (self.finder.truncated) return std.fmt.bufPrint(buf, "{d}+ matches", .{n}) catch "";
+        if (self.finder.selectionIsMatch(&self.editor)) return std.fmt.bufPrint(buf, "{d} of {d}", .{ self.finder.current.? + 1, n }) catch "";
+        return std.fmt.bufPrint(buf, "{d} match{s}", .{ n, if (n == 1) "" else "es" }) catch "";
+    }
+
+    fn drawFindBar(self: *App, u: *Ui, modal: bool) void {
+        const t = u.theme;
+        const w = u.width();
+        const y0 = TOOLBAR_H;
+        const bh = self.findBarHeight();
+        u.fillRect(Rect.init(0, y0, w, bh), if (t.dark) 0xFF262629 else 0xFFF7F7F9);
+        u.hline(0, w, y0 + bh - 1, if (t.dark) 0xFF151517 else 0xFFDCDCE0);
+
+        // Keys for the fields: Esc closes, Tab switches, Enter searches.
+        var enter = false;
+        var shift_enter = false;
+        if (!modal and self.findFocused(u)) {
+            for (u.keys[0..u.key_count]) |k| {
+                switch (k.code) {
+                    Key.esc => {
+                        self.closeFind(u);
+                        u.keys_consumed = true;
+                        return;
+                    },
+                    Key.tab => if (self.find_replace) {
+                        u.focus = if (u.focus == hashId("find-field")) hashId("replace-field") else hashId("find-field");
+                    },
+                    Key.enter, Key.kpenter => if (u.focus == hashId("find-field")) {
+                        if (k.mods & Mods.shift != 0) shift_enter = true else enter = true;
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        const e = &self.editor;
+        const ch: i32 = 26;
+        const right_w: i32 = 272;
+        const fw = @max(140, w - 24 - right_w);
+        // Find row: [ field ][Aa] status  ‹ ›  Done
+        const fy = y0 + @divTrunc(FIND_ROW_H - ch, 2);
+        const fr = Rect.init(12, fy, fw, ch);
+        const res = u.textField("find-field", fr, &self.find_field, .{ .placeholder = "Find", .capsule = true });
+        if (res.changed) {
+            // Incremental search from the selection.
+            self.finder.refresh(self.allocator, e, self.find_field.text());
+            if (self.finder.current) |i| self.finder.select(e, i);
+            self.needs_redraw = true;
+        }
+        if (enter) self.findStep(true);
+        if (shift_enter) self.findStep(false);
+
+        var x = fr.right() + 8;
+        const case_r = Rect.init(x, fy, 34, ch);
+        glassCapsule(u, case_r);
+        if (segButton(u, "find-case", case_r.inset(2, 2), self.finder.case_sensitive)) {
+            self.finder.case_sensitive = !self.finder.case_sensitive;
+            self.needs_redraw = true;
+        }
+        u.text(case_r, "Aa", .{ .size = 12, .weight = .semibold, .@"align" = .center, .color = if (self.finder.case_sensitive) t.accent else t.label });
+        x = case_r.right() + 8;
+
+        var sb: [48]u8 = undefined;
+        self.finder.refresh(self.allocator, e, self.find_field.text());
+        const status = self.findStatus(&sb);
+        const not_found = self.finder.matches.items.len == 0 and self.find_field.text().len > 0;
+        u.text(Rect.init(x, fy, 96, ch), status, .{ .size = 12, .@"align" = .center, .color = if (not_found) @as(u32, 0xFFFF453A) else t.secondary_label });
+        x += 100;
+
+        const have = self.finder.matches.items.len > 0;
+        const nav = Rect.init(x, fy, 58, ch);
+        glassCapsule(u, nav);
+        if (segButton(u, "find-prev", Rect.init(nav.x + 2, fy + 2, 26, ch - 4), false) and have) self.findStep(false);
+        if (segButton(u, "find-next", Rect.init(nav.x + 30, fy + 2, 26, ch - 4), false) and have) self.findStep(true);
+        const col = if (have) t.label else t.tertiary_label;
+        const cy: f32 = @floatFromInt(fy + @divTrunc(ch, 2));
+        const lx: f32 = @floatFromInt(nav.x + 16);
+        u.line(lx + 2, cy - 4.5, lx - 2.5, cy, 1.6, col);
+        u.line(lx - 2.5, cy, lx + 2, cy + 4.5, 1.6, col);
+        const rx: f32 = @floatFromInt(nav.x + 42);
+        u.line(rx - 2, cy - 4.5, rx + 2.5, cy, 1.6, col);
+        u.line(rx + 2.5, cy, rx - 2, cy + 4.5, 1.6, col);
+        u.fillRect(Rect.init(nav.x + 29, fy + 6, 1, ch - 12), t.separator);
+        x = nav.right() + 8;
+
+        if (u.button("find-done", Rect.init(x, fy, 56, ch), "Done", .{ .size = 12 })) {
+            self.closeFind(u);
+            return;
+        }
+
+        if (!self.find_replace) return;
+        // Replace row: [ field ]  Replace  All
+        const ry = y0 + FIND_ROW_H + @divTrunc(FIND_ROW_H - ch, 2) - 3;
+        _ = u.textField("replace-field", Rect.init(12, ry, fw, ch), &self.replace_field, .{ .placeholder = "Replace", .capsule = true });
+        const bx = fr.right() + 8;
+        if (u.button("replace-one", Rect.init(bx, ry, 82, ch), "Replace", .{ .size = 12, .enabled = have })) {
+            self.finder.replaceOne(self.allocator, e, self.find_field.text(), self.replace_field.text());
+            self.needs_redraw = true;
+        }
+        if (u.button("replace-all", Rect.init(bx + 90, ry, 56, ch), "All", .{ .size = 12, .enabled = have })) {
+            _ = self.finder.replaceAll(self.allocator, e, self.find_field.text(), self.replace_field.text());
+            self.needs_redraw = true;
+        }
     }
 
     // ------------------------------------------------------------------

@@ -16,6 +16,7 @@ const Rect = ui.Rect;
 const Key = abi.input.Key;
 const Mods = abi.window.Mods;
 const utf8 = font.utf8;
+const find = @import("find.zig");
 
 /// A visual (wrapped) line: `text[start..end]` is drawn; the next line
 /// starts at `lines[i + 1].start` (after a '\n' or after break spaces).
@@ -90,6 +91,10 @@ pub const Editor = struct {
     drag: DragMode = .none,
     drag_a: usize = 0,
     drag_b: usize = 0,
+
+    /// Find matches to highlight (sorted, disjoint) and the current one.
+    highlights: []const Span = &.{},
+    highlight_current: ?usize = null,
 
     pub fn init(allocator: std.mem.Allocator) Editor {
         return .{ .allocator = allocator };
@@ -560,6 +565,8 @@ pub const Editor = struct {
         selection: u32,
         caret: u32,
         scrollbar: u32,
+        find: u32 = 0,
+        find_current: u32 = 0,
     };
 
     /// Handle keyboard input. Returns true when something changed.
@@ -763,7 +770,11 @@ pub const Editor = struct {
         const old = u.pushClip(area);
         defer u.popClip(old);
 
-        const sel = self.selection();
+        var sel = self.selection();
+        // The current find match is shown in its own colour instead.
+        if (self.highlight_current) |ci| {
+            if (ci < self.highlights.len and self.highlights[ci].a == sel.a and self.highlights[ci].b == sel.b) sel.b = sel.a;
+        }
         const x0 = @as(f32, @floatFromInt(area.x)) + pad_x - self.scroll_x;
         const n = self.lines.items.len;
         const first: usize = @intFromFloat(@max(0, @floor((self.scroll_y - pad_top) / lh)));
@@ -777,6 +788,21 @@ pub const Editor = struct {
             const line_text = self.text.items[l.start..l.end];
             // Selection background.
             const next_start: usize = if (li + 1 < n) self.lines.items[li + 1].start else self.text.items.len;
+            // Find matches.
+            if (self.highlights.len > 0) {
+                const hs = find.overlapping(self.highlights, l.start, @max(l.end, next_start));
+                const base = @intFromPtr(self.highlights.ptr);
+                for (hs) |*h| {
+                    const idx = (@intFromPtr(h) - base) / @sizeOf(Span);
+                    const a = @max(h.a, l.start);
+                    const b = @min(h.b, l.end);
+                    if (b <= a) continue;
+                    const xa = f.measure(self.text.items[l.start..a]);
+                    const xb = f.measure(self.text.items[l.start..b]);
+                    const r = Rect.init(@intFromFloat(@floor(x0 + xa - 1)), @intFromFloat(@floor(top + 1)), @intFromFloat(@ceil(xb - xa + 2)), @intFromFloat(lh - 2));
+                    u.fillRound(r, 3, if (self.highlight_current == idx) colors.find_current else colors.find);
+                }
+            }
             if (sel.a != sel.b and sel.a < @max(next_start, l.end + 1) and sel.b > l.start) {
                 const a = @max(sel.a, l.start);
                 const b = @min(sel.b, @max(l.end, next_start));

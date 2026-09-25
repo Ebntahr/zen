@@ -8,6 +8,10 @@ const ui = @import("ui");
 const abi = @import("abi");
 const app = @import("app.zig");
 
+test {
+    _ = @import("find.zig");
+}
+
 const Event = abi.window.Event;
 const Key = abi.input.Key;
 const Mods = abi.window.Mods;
@@ -256,4 +260,46 @@ test "file: URLs from Finder are decoded" {
     try std.testing.expect(std.mem.indexOf(u8, url, "%20") != null);
     h.a.openPathArg(url);
     try std.testing.expectEqualStrings("spaces ok", h.text());
+}
+
+test "find bar: incremental search, next, replace all, escape" {
+    var h = try Harness.init(.{ .text = "red fish, blue fish\nFish tales", .documents = "/tmp" });
+    defer h.deinit();
+    const a = h.a;
+    h.menu(app.M.find);
+    try std.testing.expect(a.find_open);
+    h.typeText("fish");
+    // Typing selects the first match after the caret.
+    try std.testing.expectEqual(@as(usize, 3), a.finder.matches.items.len);
+    try std.testing.expectEqualStrings("fish", a.editor.selectedText());
+    try std.testing.expectEqual(@as(usize, 4), a.editor.selection().a);
+    // The typed text went to the field, not the document.
+    try std.testing.expectEqualStrings("red fish, blue fish\nFish tales", h.text());
+    h.key(Key.enter, 0);
+    try std.testing.expectEqual(@as(usize, 15), a.editor.selection().a);
+    h.key(Key.enter, Mods.shift);
+    try std.testing.expectEqual(@as(usize, 4), a.editor.selection().a);
+    h.menu(app.M.find_next);
+    h.menu(app.M.find_next);
+    try std.testing.expectEqualStrings("Fish", a.editor.selectedText());
+
+    // Find and Replace: Tab moves to the replace field.
+    h.menu(app.M.find_replace);
+    try std.testing.expect(a.find_replace);
+    h.key(Key.tab, 0);
+    h.typeText("cat");
+    try std.testing.expectEqualStrings("cat", a.replace_field.text());
+    _ = a.finder.replaceAll(std.testing.allocator, &a.editor, a.find_field.text(), a.replace_field.text());
+    try std.testing.expectEqualStrings("red cat, blue cat\ncat tales", h.text());
+    h.menu(app.M.undo);
+    try std.testing.expectEqualStrings("red fish, blue fish\nFish tales", h.text());
+
+    // Escape closes the bar and gives the keyboard back to the document.
+    h.step(&.{});
+    h.a.find_replace = false;
+    h.menu(app.M.find);
+    h.key(Key.esc, 0);
+    try std.testing.expect(!a.find_open);
+    h.typeText("!");
+    try std.testing.expect(std.mem.indexOfScalar(u8, h.text(), '!') != null);
 }

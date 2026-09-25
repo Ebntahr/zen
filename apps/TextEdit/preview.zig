@@ -82,6 +82,8 @@ pub fn main() !void {
         .{ .name = "textedit_dark", .dark = true, .opts = .{ .text = sample, .path = docs ++ "/Release Notes.txt", .documents = docs, .cursor = caret, .anchor = caret, .dirty = true } },
         .{ .name = "textedit_mono_light", .dark = false, .opts = .{ .text = code, .path = docs ++ "/hello.zig", .documents = docs, .cursor = code_caret, .anchor = code_caret, .mono = true, .size = 14, .wrap = false } },
         .{ .name = "textedit_save_light", .dark = false, .opts = .{ .text = sample, .documents = docs, .cursor = caret, .anchor = caret, .dirty = true, .sheet = .save, .sheet_text = "Release Notes 2.txt" } },
+        .{ .name = "textedit_find_light", .dark = false, .opts = .{ .text = sample, .path = docs ++ "/Release Notes.txt", .documents = docs, .find = "zen", .replace = "Zen OS" } },
+        .{ .name = "textedit_find_dark", .dark = true, .opts = .{ .text = sample, .path = docs ++ "/Release Notes.txt", .documents = docs, .find = "url" } },
         .{ .name = "textedit_confirm_dark", .dark = true, .opts = .{ .text = sample, .documents = docs, .cursor = caret, .anchor = caret, .dirty = true, .sheet = .confirm } },
     };
     for (shots) |s| {
