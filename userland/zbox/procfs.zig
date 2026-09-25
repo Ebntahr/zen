@@ -36,7 +36,7 @@ pub fn listPids() []i32 {
         const pid = std.fmt.parseInt(i32, e.name, 10) catch continue;
         list.append(c.gpa, pid) catch c.oom();
     }
-    mem.sort(i32, list.items, {}, std.sort.asc(i32));
+    std.sort.insertion(i32, list.items, {}, std.sort.asc(i32));
     return list.items;
 }
 

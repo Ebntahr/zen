@@ -117,8 +117,13 @@ pub fn fatalCode(code: u8, comptime fmt: []const u8, args: anytype) noreturn {
     exit(code);
 }
 
+/// diffutils style: prefix the "Try ..." line with the program name.
+pub var try_with_prog = false;
+
 pub fn tryHelp() void {
-    eprint("Try '{s} --help' for more information.\n", .{prog});
+    if (try_with_prog) {
+        eprint("{s}: Try '{s} --help' for more information.\n", .{ prog, prog });
+    } else eprint("Try '{s} --help' for more information.\n", .{prog});
 }
 
 pub fn usageErr(comptime fmt: []const u8, args: anytype) noreturn {
@@ -663,8 +668,13 @@ pub fn readDirNames(path: []const u8) SysError![][]const u8 {
     return list.toOwnedSlice(gpa) catch return error.NOMEM;
 }
 
+pub fn freeNames(names: [][]const u8) void {
+    for (names) |n| gpa.free(n);
+    gpa.free(names);
+}
+
 pub fn sortStrings(list: [][]const u8) void {
-    mem.sort([]const u8, list, {}, struct {
+    std.sort.heap([]const u8, list, {}, struct {
         fn lt(_: void, a: []const u8, b: []const u8) bool {
             return mem.order(u8, a, b) == .lt;
         }
@@ -776,12 +786,6 @@ pub const Parser = struct {
         return .{ .name = name, .short = 0 };
     }
 
-    fn optName(p: *Parser, buf: []u8) []const u8 {
-        if (p.last_long) |l| return std.fmt.bufPrint(buf, "--{s}", .{l}) catch l;
-        buf[0] = p.last_short;
-        return buf[0..1];
-    }
-
     /// Mandatory option argument.
     pub fn arg(p: *Parser) [:0]const u8 {
         if (p.lval) |v| {
@@ -842,11 +846,6 @@ pub const Parser = struct {
         }
     }
 };
-
-/// Collect operands while dispatching options through `handler`.
-pub fn collect(list: *std.ArrayList([:0]const u8), a: [:0]const u8) void {
-    list.append(gpa, a) catch oom();
-}
 
 pub fn oom() noreturn {
     fatal("memory exhausted", .{});
@@ -1904,6 +1903,9 @@ pub const LineReader = struct {
     /// True if the last returned line was terminated by the delimiter.
     had_delim: bool = true,
     is_reg: bool = false,
+    /// Name used in diagnostics by nextw().
+    name: []const u8 = "-",
+    failed: bool = false,
 
     pub fn init(fd: i32) LineReader {
         const buf = gpa.alloc(u8, 65536) catch oom();
@@ -1940,6 +1942,16 @@ pub const LineReader = struct {
             }
             try r.fill();
         }
+    }
+
+    /// Like next(), but reports read errors GNU style ("prog: NAME: error")
+    /// and returns null (setting .failed).
+    pub fn nextw(r: *LineReader) ?[]u8 {
+        return r.next() catch |e| {
+            warn("{s}: {s}", .{ if (mem.eql(u8, r.name, "-")) "-" else r.name, strerror(e) });
+            r.failed = true;
+            return null;
+        };
     }
 
     fn fill(r: *LineReader) SysError!void {
@@ -2407,6 +2419,16 @@ pub fn unescapeOne(s: []const u8, obuf: []u8, octal_needs_zero: bool) struct { [
     return .{ s[0..2], 2 };
 }
 
+/// Fill buf with random bytes (getrandom(2), falling back to a time-seeded PRNG).
+pub fn randomBytes(buf: []u8) void {
+    const rc = linux.getrandom(buf.ptr, buf.len, 0);
+    if (posix.errno(rc) == .SUCCESS and rc == buf.len) return;
+    var seed: u64 = @bitCast(now().nsec ^ (now().sec << 20));
+    seed ^= @as(u64, @intCast(sys.getpid())) << 32;
+    var prng = std.Random.DefaultPrng.init(seed);
+    prng.random().bytes(buf);
+}
+
 pub fn eql(a: []const u8, b: []const u8) bool {
     return mem.eql(u8, a, b);
 }
@@ -2431,8 +2453,39 @@ pub fn yesno() bool {
 
 pub const CanonMode = enum { all_exist, last_may_miss, none_exist };
 
+/// Length of a Redox/Zen style URL scheme prefix ("sys:", "file:") or 0.
+pub fn schemeLen(path: []const u8) usize {
+    const colon = mem.indexOfScalar(u8, path, ':') orelse return 0;
+    if (colon == 0) return 0;
+    if (mem.indexOfScalar(u8, path[0..colon], '/') != null) return 0;
+    if (!std.ascii.isAlphabetic(path[0])) return 0;
+    for (path[0..colon]) |ch| if (!(std.ascii.isAlphanumeric(ch) or ch == '+' or ch == '-' or ch == '.')) return 0;
+    return colon + 1;
+}
+
 /// Canonicalize a path resolving ".", ".." and symlinks (like realpath/readlink -f).
+/// Scheme URLs such as "sys:proc/1/../2" are only normalized lexically.
 pub fn canonicalize(path: []const u8, mode: CanonMode, resolve_links: bool) SysError![]u8 {
+    const sl = schemeLen(path);
+    if (sl > 0) {
+        var res: std.ArrayList(u8) = .empty;
+        res.appendSlice(gpa, path[0..sl]) catch return error.NOMEM;
+        var it = mem.tokenizeScalar(u8, path[sl..], '/');
+        var first = true;
+        while (it.next()) |comp| {
+            if (mem.eql(u8, comp, ".")) continue;
+            if (mem.eql(u8, comp, "..")) {
+                if (mem.lastIndexOfScalar(u8, res.items[sl..], '/')) |i| res.shrinkRetainingCapacity(sl + i) else res.shrinkRetainingCapacity(sl);
+                first = res.items.len == sl;
+                continue;
+            }
+            if (!first) res.append(gpa, '/') catch return error.NOMEM;
+            res.appendSlice(gpa, comp) catch return error.NOMEM;
+            first = false;
+        }
+        if (mode == .all_exist) _ = try sys.stat(res.items);
+        return res.items;
+    }
     var result: std.ArrayList(u8) = .empty;
     var pending: std.ArrayList([]const u8) = .empty; // stack of remaining components (reversed)
     var links: usize = 0;
@@ -2634,4 +2687,7 @@ test "misc helpers" {
     var w: std.Io.Writer = .fixed(&buf);
     try w.print("{f} {f} {f} {f}", .{ q("a b"), q("it's"), qf("plain"), qf("sys:proc") });
     try std.testing.expectEqualStrings("'a b' \"it's\" plain sys:proc", w.buffered());
+    try std.testing.expectEqual(@as(usize, 4), schemeLen("sys:proc/1"));
+    try std.testing.expectEqual(@as(usize, 0), schemeLen("./a:b"));
+    try std.testing.expectEqualStrings("sys:proc/2/status", try canonicalize("sys:proc/1/../2/./status", .none_exist, true));
 }

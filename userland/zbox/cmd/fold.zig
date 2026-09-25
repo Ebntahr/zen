@@ -44,7 +44,7 @@ pub fn main(args_in: c.Args) !u8 {
             'w' => {
                 const a = p.arg();
                 width = @intCast(c.parseUint(a) orelse c.fatal("invalid number of columns: {f}", .{c.q(a)}));
-                if (width == 0) c.fatal("invalid number of columns: {f}", .{c.q(a)});
+                if (width == 0) c.fatal("invalid number of columns: {f}: Numerical result out of range", .{c.q(a)});
             },
             else => p.bad(o),
         },
@@ -62,8 +62,12 @@ pub fn main(args_in: c.Args) !u8 {
         };
         defer c.closeInput(fd);
         var r = c.LineReader.init(fd);
-        defer r.deinit();
-        while (try r.next()) |line| {
+        defer {
+            if (r.failed) status = 1;
+            r.deinit();
+        }
+        r.name = f;
+        while (r.nextw()) |line| {
             buf.clearRetainingCapacity();
             var col: usize = 0;
             for (line) |ch| {

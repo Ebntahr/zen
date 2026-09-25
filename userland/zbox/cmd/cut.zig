@@ -31,6 +31,13 @@ const Range = struct { lo: u64, hi: u64 };
 var ranges: std.ArrayList(Range) = .empty;
 var complement = false;
 
+var list_kind: u8 = 'f';
+
+fn zeroErr() noreturn {
+    if (list_kind == 'f') c.usageErr("fields are numbered from 1", .{});
+    c.usageErr("byte/character positions are numbered from 1", .{});
+}
+
 fn parseList(s: []const u8) void {
     var it = mem.tokenizeAny(u8, s, ", ");
     while (it.next()) |part| {
@@ -41,11 +48,11 @@ fn parseList(s: []const u8) void {
             if (a.len == 0 and b.len == 0) c.fatal("invalid range with no endpoint: -", .{});
             if (a.len > 0) r.lo = c.parseUint(a) orelse c.fatal("invalid field value {f}", .{c.q(a)});
             if (b.len > 0) r.hi = c.parseUint(b) orelse c.fatal("invalid field value {f}", .{c.q(b)});
-            if (r.lo == 0) c.fatal("fields and positions are numbered from 1", .{});
-            if (r.hi < r.lo) c.fatal("invalid decreasing range", .{});
+            if (r.lo == 0) zeroErr();
+            if (r.hi < r.lo) c.usageErr("invalid decreasing range", .{});
         } else {
             const n = c.parseUint(part) orelse c.fatal("invalid field value {f}", .{c.q(part)});
-            if (n == 0) c.fatal("fields and positions are numbered from 1", .{});
+            if (n == 0) zeroErr();
             r = .{ .lo = n, .hi = n };
         }
         ranges.append(c.gpa, r) catch c.oom();
@@ -78,6 +85,7 @@ pub fn main(args: c.Args) !u8 {
             'b', 'c', 'f' => {
                 if (mode != 0) c.usageErr("only one list may be specified", .{});
                 mode = ch;
+                list_kind = ch;
                 parseList(p.arg());
             },
             'd' => {
@@ -110,7 +118,8 @@ pub fn main(args: c.Args) !u8 {
         var r = c.LineReader.init(fd);
         defer r.deinit();
         r.delim = eol;
-        while (try r.next()) |line| {
+        r.name = f;
+        while (r.nextw()) |line| {
             if (mode == 'f') {
                 if (mem.indexOfScalar(u8, line, delim) == null) {
                     if (!only_delim) {
@@ -143,6 +152,7 @@ pub fn main(args: c.Args) !u8 {
             }
             try w.writeByte(eol);
         }
+        if (r.failed) status = 1;
     }
     return status;
 }

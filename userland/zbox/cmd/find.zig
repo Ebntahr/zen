@@ -608,9 +608,7 @@ fn doExec(e: *Exec, ctx: *Ctx) bool {
     var argv: std.ArrayList([]const u8) = .empty;
     for (e.argv) |a| argv.append(c.gpa, replaceBraces(a, target)) catch c.oom();
     if (e.ok) {
-        c.eprint("< ", .{});
-        for (argv.items, 0..) |a, i| c.eprint("{s}{s}", .{ if (i > 0) " " else "", a });
-        c.eprint(" ... {s} > ? ", .{target});
+        c.eprint("< {s} ... {s} > ? ", .{ argv.items[0], target });
         if (!c.yesno()) return false;
     }
     return runArgv(argv.items, if (e.dir) dir_path else null) == 0;
@@ -775,8 +773,10 @@ fn visit(expr: *Node, path: []const u8, name: []const u8, start: []const u8, dep
                 break :blk &[_][]const u8{};
             };
             c.sortStrings(@constCast(names));
+            defer if (names.len > 0) c.freeNames(@constCast(names));
             for (names) |n| {
                 const full = c.join(path, n);
+                defer c.gpa.free(full);
                 visit(expr, full, n, start, depth + 1, if (root_dev == 0) st.dev else root_dev);
                 if (quit_now) return;
             }

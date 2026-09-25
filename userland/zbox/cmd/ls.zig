@@ -329,7 +329,7 @@ fn sortEntries(list: []Entry) void {
         if (reverse) mem.reverse(Entry, list);
         return;
     }
-    mem.sort(Entry, list, {}, cmpEntries);
+    std.sort.heap(Entry, list, {}, cmpEntries);
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +701,14 @@ fn listDir(w: *std.Io.Writer, path: []const u8, print_header: bool, first: *bool
         return;
     };
     var entries: std.ArrayList(Entry) = .empty;
+    defer {
+        for (entries.items) |e| {
+            if (!c.eql(e.name, ".") and !c.eql(e.name, "..")) c.gpa.free(e.name);
+            c.gpa.free(e.path);
+            if (e.target) |t| c.gpa.free(t);
+        }
+        entries.deinit(c.gpa);
+    }
     if (show_all) {
         for ([_][]const u8{ ".", ".." }) |dn| {
             if (makeEntry(dn, c.join(path, dn), deref)) |e| try entries.append(c.gpa, e);
@@ -772,7 +780,7 @@ pub fn main(args: c.Args) !u8 {
     var explicit_fmt = false;
     var p = c.Parser.init(args, &.{
         .{ "all", 'a' },               .{ "almost-all", 'A' },         .{ "ignore-backups", 'B' },
-        .{ "color", 0 },               .{ "colour", 0 },               .{ "directory", 'd' },
+        .{ "color", 0 },               .{ "directory", 'd' },
         .{ "classify", 'F' },          .{ "full-time", 0 },            .{ "group-directories-first", 0 },
         .{ "no-group", 'G' },          .{ "human-readable", 'h' },     .{ "si", 0 },
         .{ "dereference-command-line", 'H' }, .{ "inode", 'i' },       .{ "ignore", 'I' },

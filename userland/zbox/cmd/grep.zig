@@ -364,6 +364,7 @@ fn grepPath(path: []const u8, show_name: bool, top: bool) !void {
             had_error = true;
             return;
         };
+        defer c.freeNames(names);
         c.sortStrings(names);
         for (names) |n| {
             const full = c.join(path, n);

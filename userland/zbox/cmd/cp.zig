@@ -172,11 +172,14 @@ pub fn copy(src: []const u8, dst: []const u8, top: bool, root_dev: u64) bool {
         }
         if (o.verbose and !o.is_mv) c.out.print("{f} -> {f}\n", .{ c.q(src), c.q(dst) }) catch {};
         const names = c.readDirNames(src) catch |e| return fail("cannot access {f}: {s}", .{ c.q(src), c.strerror(e) });
+        defer c.freeNames(names);
         c.sortStrings(names);
         var ok = true;
         for (names) |n| {
             const s2 = c.join(src, n);
+            defer c.gpa.free(s2);
             const d2 = c.join(dst, n);
+            defer c.gpa.free(d2);
             if (!copy(s2, d2, false, if (root_dev == 0) st.dev else root_dev)) ok = false;
         }
         if (o.preserve_mode or o.preserve_owner or o.preserve_time) {

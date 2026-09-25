@@ -649,7 +649,7 @@ fn beginInPlace(file_idx: usize) void {
     while (k < 1000) : (k += 1) {
         var nb: [64]u8 = undefined;
         var rnd: [4]u8 = undefined;
-        std.crypto.random.bytes(&rnd);
+        c.randomBytes(&rnd);
         const base = c.fmtBuf(&nb, "sed{x:0>8}", .{mem.readInt(u32, &rnd, .little)});
         ip_tmp = c.join(dir, base);
         ip_fd = c.sys.open(ip_tmp, .{ .ACCMODE = .WRONLY, .CREAT = true, .EXCL = true, .CLOEXEC = true }, 0o600) catch |e| {
@@ -1164,4 +1164,65 @@ test "sed substitute basics" {
     try ps.appendSlice(c.gpa, "xabyab");
     try std.testing.expect(try substitute(cmds.items[0].subst.?));
     try std.testing.expectEqualStrings("x[bab]y[bab]", ps.items);
+}
+
+fn parseForTest(script: []const u8) void {
+    cmds = .empty;
+    wfiles = .empty;
+    extended = false;
+    var parser: Parser = .{ .s = script };
+    parser.parse();
+}
+
+test "sed parser: addresses" {
+    parseForTest("1d;$p;/re/I,+2s/a/b/;0,/x/d;2~3p;/a/,/b/!d;\\,x,p");
+    const k = cmds.items;
+    try std.testing.expectEqual(@as(usize, 7), k.len);
+    try std.testing.expectEqual(AddrKind.line, k[0].a1.kind);
+    try std.testing.expectEqual(@as(u64, 1), k[0].a1.n);
+    try std.testing.expectEqual(AddrKind.last, k[1].a1.kind);
+    try std.testing.expectEqual(AddrKind.re, k[2].a1.kind);
+    try std.testing.expect(k[2].a1.re.?.icase);
+    try std.testing.expectEqual(AddrKind.plus, k[2].a2.kind);
+    try std.testing.expectEqual(@as(u64, 2), k[2].a2.n);
+    try std.testing.expectEqual(AddrKind.zero, k[3].a1.kind);
+    try std.testing.expect(k[3].active);
+    try std.testing.expectEqual(AddrKind.step, k[4].a1.kind);
+    try std.testing.expectEqual(@as(u64, 3), k[4].a1.step);
+    try std.testing.expect(k[5].negate);
+    try std.testing.expectEqual(AddrKind.re, k[6].a1.kind);
+}
+
+test "sed parser: text commands, labels, blocks, y" {
+    parseForTest("/x/{\n  a\\\n  appended\n  i inserted\n}\n:loop\ns/a/b/;tloop\ny/abc/xyz/\n$c\\\nchanged");
+    const k = cmds.items;
+    try std.testing.expectEqual(@as(u8, '{'), k[0].ch);
+    try std.testing.expectEqual(@as(usize, 4), k[0].jump);
+    try std.testing.expectEqualStrings("  appended", k[1].text);
+    try std.testing.expectEqualStrings("inserted", k[2].text);
+    try std.testing.expectEqual(@as(u8, ':'), k[4].ch);
+    try std.testing.expectEqualStrings("loop", k[4].label);
+    try std.testing.expectEqual(@as(u8, 't'), k[6].ch);
+    try std.testing.expectEqual(@as(usize, 4), k[6].jump);
+    try std.testing.expectEqual(@as(u8, 'x'), k[7].ytab.?['a']);
+    try std.testing.expectEqual(@as(u8, 'z'), k[7].ytab.?['c']);
+    try std.testing.expectEqualStrings("changed", k[8].text);
+}
+
+test "sed substitute flags and case conversion" {
+    parseForTest("s/\\(.\\)\\(.*\\)/\\u\\1\\U\\2/");
+    ps = .empty;
+    try ps.appendSlice(c.gpa, "hello world");
+    try std.testing.expect(try substitute(cmds.items[0].subst.?));
+    try std.testing.expectEqualStrings("HELLO WORLD", ps.items);
+    parseForTest("s/o/0/2");
+    ps.clearRetainingCapacity();
+    try ps.appendSlice(c.gpa, "foo boo");
+    try std.testing.expect(try substitute(cmds.items[0].subst.?));
+    try std.testing.expectEqualStrings("fo0 boo", ps.items);
+    parseForTest("s/x*/-/g");
+    ps.clearRetainingCapacity();
+    try ps.appendSlice(c.gpa, "abc");
+    try std.testing.expect(try substitute(cmds.items[0].subst.?));
+    try std.testing.expectEqualStrings("-a-b-c-", ps.items);
 }

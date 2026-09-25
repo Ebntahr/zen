@@ -90,8 +90,12 @@ pub fn main(args: c.Args) !u8 {
         };
         defer c.closeInput(fd);
         var r = c.LineReader.init(fd);
-        defer r.deinit();
-        while (try r.next()) |line| {
+        defer {
+            if (r.failed) status = 1;
+            r.deinit();
+        }
+        r.name = f;
+        while (r.nextw()) |line| {
             // section delimiters
             if (delim.len > 0 and line.len > 0 and line.len % delim.len == 0 and line.len / delim.len <= 3) {
                 var all = true;

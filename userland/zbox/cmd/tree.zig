@@ -131,19 +131,28 @@ fn printEntry(w: *std.Io.Writer, e: Ent) !void {
 fn walk(w: *std.Io.Writer, path: []const u8, prefix: *std.ArrayList(u8), level: u64) !void {
     if (max_level) |ml| if (level >= ml) return;
     const names = c.readDirNames(path) catch return;
+    defer c.freeNames(names);
     var ents: std.ArrayList(Ent) = .empty;
+    defer {
+        for (ents.items) |e| c.gpa.free(e.path);
+        ents.deinit(c.gpa);
+    }
     for (names) |n| {
         if (!show_all and n.len > 0 and n[0] == '.') continue;
         const full = c.join(path, n);
         const st: ?c.Stat = c.sys.lstat(full) catch null;
         const tst: ?c.Stat = c.sys.stat(full) catch null;
         const is_dir = st != null and st.?.isDir();
-        if (dirs_only and !is_dir) continue;
-        if (ignore_pat) |ip| if (c.fnmatch(ip, n, .{})) continue;
-        if (match_pat) |mp| if (!is_dir and !c.fnmatch(mp, n, .{})) continue;
+        const keep = !(dirs_only and !is_dir) and
+            !(if (ignore_pat) |ip| c.fnmatch(ip, n, .{}) else false) and
+            !(if (match_pat) |mp| !is_dir and !c.fnmatch(mp, n, .{}) else false);
+        if (!keep) {
+            c.gpa.free(full);
+            continue;
+        }
         try ents.append(c.gpa, .{ .name = n, .path = full, .st = st, .target_st = tst });
     }
-    mem.sort(Ent, ents.items, {}, lessThan);
+    std.sort.heap(Ent, ents.items, {}, lessThan);
     const tee = if (ascii) "|-- " else "├── ";
     const ell = if (ascii) "`-- " else "└── ";
     const bar = if (ascii) "|   " else "│   ";

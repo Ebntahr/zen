@@ -413,7 +413,7 @@ fn setOrdering(s: []const u8, o: *KOpts, start: bool) usize {
 }
 
 fn badKey(spec: []const u8, why: []const u8) noreturn {
-    c.fatalCode(2, "invalid field specification {f}: {s}", .{ c.q(spec), why });
+    c.fatalCode(2, "{s}: invalid field specification {f}", .{ why, c.q(spec) });
 }
 
 fn parseKey(spec: []const u8) Key {
@@ -521,7 +521,7 @@ pub fn main(args: c.Args) !u8 {
     };
     if (gopts.R) {
         var b: [8]u8 = undefined;
-        std.crypto.random.bytes(&b);
+        c.randomBytes(&b);
         rand_seed = mem.readInt(u64, &b, .little);
     }
     // keys without options inherit global options

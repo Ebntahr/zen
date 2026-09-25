@@ -25,15 +25,20 @@ pub fn main(args: c.Args) !u8 {
     var status: u8 = 0;
     var tmp: std.ArrayList(u8) = .empty;
     for (files.items) |f| {
-        const fd = c.openInput(f) orelse {
+        const fd = if (c.eql(f, "-")) @as(i32, 0) else c.sys.open(f, c.O_RDONLY, 0) catch |e| {
+            c.warn("cannot open {s}: {s}", .{ f, c.strerror(e) });
             status = 1;
             continue;
         };
         defer c.closeInput(fd);
         var r = c.LineReader.init(fd);
-        defer r.deinit();
+        defer {
+            if (r.failed) status = 1;
+            r.deinit();
+        }
         r.delim = delim;
-        while (try r.next()) |line| {
+        r.name = f;
+        while (r.nextw()) |line| {
             tmp.clearRetainingCapacity();
             // reverse by UTF-8 code points
             var i: usize = line.len;

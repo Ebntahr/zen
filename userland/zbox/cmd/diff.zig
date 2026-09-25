@@ -498,6 +498,7 @@ fn diffDirs(d1: []const u8, d2: []const u8) !void {
 
 pub fn main(args: c.Args) !u8 {
     c.usage_status = 2;
+    c.try_with_prog = true;
     var files: std.ArrayList([]const u8) = .empty;
     var opts: std.ArrayList(u8) = .empty;
     var nlabels: usize = 0;

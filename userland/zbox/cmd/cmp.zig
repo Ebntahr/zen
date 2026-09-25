@@ -32,6 +32,7 @@ fn printable(buf: []u8, b: u8) []const u8 {
 
 pub fn main(args: c.Args) !u8 {
     c.usage_status = 2;
+    c.try_with_prog = true;
     var print_bytes = false;
     var verbose = false;
     var silent = false;

@@ -78,7 +78,7 @@ pub fn main(args: c.Args) !u8 {
         @memcpy(name[0..tmpl.len], tmpl);
         @memcpy(name[tmpl.len..], suffix);
         var rnd: [64]u8 = undefined;
-        std.crypto.random.bytes(&rnd);
+        c.randomBytes(&rnd);
         for (0..xs) |k| name[end + k] = chars[rnd[k % rnd.len] % chars.len];
         if (dry) {
             if (c.sys.lstat(name)) |_| continue else |_| {}

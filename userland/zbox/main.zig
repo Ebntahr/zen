@@ -10,6 +10,17 @@ pub const std_options: std.Options = .{
     .enable_segfault_handler = false,
 };
 
+/// Small panic handler: print the message and abort (no stack unwinding /
+/// DWARF parsing code is linked in, which keeps the binary small).
+pub const panic = if (@import("builtin").mode == .Debug) std.debug.FullPanic(std.debug.defaultPanic) else std.debug.FullPanic(zboxPanic);
+
+fn zboxPanic(msg: []const u8, _: ?usize) noreturn {
+    @branchHint(.cold);
+    c.flush();
+    c.eprint("{s}: internal error: {s}\n", .{ c.prog, msg });
+    std.posix.abort();
+}
+
 const MainFn = *const fn (c.Args) anyerror!u8;
 const Cmd = struct { name: []const u8, run: MainFn, help: []const u8 };
 
@@ -173,19 +184,30 @@ fn handleError(err: anyerror) noreturn {
     }
 }
 
-fn selfPath(buf: []u8) []const u8 {
-    if (c.sys.readlink("/proc/self/exe", buf)) |p| return p else |_| {}
-    return "zbox";
+/// Absolute path of the running zbox binary (for --install symlink targets).
+fn selfPath() []const u8 {
+    var buf: [c.PATH_MAX]u8 = undefined;
+    if (c.sys.readlink("/proc/self/exe", &buf)) |p| {
+        if (p.len > 0 and p[0] == '/') return c.gpa.dupe(u8, p) catch p;
+    } else |_| {}
+    const a0 = std.mem.span(std.os.argv[0]);
+    if (std.mem.indexOfScalar(u8, a0, '/') != null) {
+        return c.canonicalize(a0, .all_exist, false) catch a0;
+    }
+    // search PATH like a shell would have
+    const path = c.getenv("PATH") orelse "/bin:/usr/bin";
+    var it = std.mem.splitScalar(u8, path, ':');
+    while (it.next()) |dir| {
+        const full = c.join(if (dir.len == 0) "." else dir, a0);
+        if (c.sys.access(full, 1)) {
+            return c.canonicalize(full, .all_exist, false) catch full;
+        } else |_| {}
+    }
+    return a0;
 }
 
 fn install(dir: []const u8) u8 {
-    var pbuf: [c.PATH_MAX]u8 = undefined;
-    var target: []const u8 = selfPath(&pbuf);
-    if (target.len == 0 or target[0] != '/') {
-        // Fall back to argv[0] resolved against cwd.
-        const a0 = std.mem.span(std.os.argv[0]);
-        target = a0;
-    }
+    const target = selfPath();
     var status: u8 = 0;
     for (commands) |e| {
         const link = c.join(dir, e.name);

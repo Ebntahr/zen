@@ -33,9 +33,18 @@ pub fn main(args: c.Args) !u8 {
     var status: u8 = 0;
     const w = c.out;
     for (files.items) |f| {
-        const data = c.readInput(f) orelse {
-            status = 1;
-            continue;
+        const data = blk: {
+            const fd = if (c.eql(f, "-")) @as(i32, 0) else c.sys.open(f, c.O_RDONLY, 0) catch |e| {
+                c.warn("failed to open {f} for reading: {s}", .{ c.q(f), c.strerror(e) });
+                status = 1;
+                continue;
+            };
+            defer c.closeInput(fd);
+            break :blk c.readFdAll(fd) catch |e| {
+                c.warn("{f}: read error: {s}", .{ c.qf(f), c.strerror(e) });
+                status = 1;
+                continue;
+            };
         };
         // collect record boundaries
         var recs: std.ArrayList([]const u8) = .empty;

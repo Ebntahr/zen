@@ -56,7 +56,8 @@ pub fn main(args_in: c.Args) !u8 {
     const w = c.out;
     var cur: std.ArrayList(u8) = .empty;
     for (files.items) |f| {
-        const fd = c.openInput(f) orelse {
+        const fd = if (c.eql(f, "-")) @as(i32, 0) else c.sys.open(f, c.O_RDONLY, 0) catch |e| {
+            if (e == error.NOENT) c.warn("{f}: No such file", .{c.q(f)}) else c.warn("{s}: {s}", .{ f, c.strerror(e) });
             status = 1;
             continue;
         };

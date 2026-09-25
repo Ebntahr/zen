@@ -54,7 +54,7 @@ pub fn main(args: c.Args) !u8 {
         else => p.bad(o),
     };
     const nsel = @as(u8, @intFromBool(only_u)) + @intFromBool(only_g) + @intFromBool(only_G);
-    if (nsel > 1) c.usageErr("cannot print \"only\" of more than one choice", .{});
+    if (nsel > 1) c.fatal("cannot print \"only\" of more than one choice", .{});
     if (nsel == 0 and (name or real)) c.usageErr("cannot print only names or real IDs in default format", .{});
     if (zero and nsel == 0) c.usageErr("option --zero not permitted in default format", .{});
     if (users.items.len == 0) try users.append(c.gpa, "");

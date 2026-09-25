@@ -67,8 +67,13 @@ fn apply(path: []const u8, top: bool) void {
             status = 1;
             return;
         };
+        defer c.freeNames(names);
         c.sortStrings(names);
-        for (names) |n| apply(c.join(path, n), false);
+        for (names) |n| {
+            const full = c.join(path, n);
+            defer c.gpa.free(full);
+            apply(full, false);
+        }
     }
 }
 

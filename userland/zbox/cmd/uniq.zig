@@ -93,6 +93,7 @@ pub fn main(args: c.Args) !u8 {
     }
     var r = c.LineReader.init(fd);
     r.delim = delim;
+    r.name = in_name;
     var prev: std.ArrayList(u8) = .empty;
     var have_prev = false;
     var n: u64 = 0;
@@ -109,7 +110,11 @@ pub fn main(args: c.Args) !u8 {
         }
     };
     while (true) {
-        const line = (try r.next()) orelse break;
+        const line = r.next() catch |e| {
+            c.warn("error reading {f}: {s}", .{ c.q(in_name), c.strerror(e) });
+            try w.flush();
+            return 1;
+        } orelse break;
         if (have_prev and same(prev.items, line)) {
             n += 1;
             if (all_repeated) {

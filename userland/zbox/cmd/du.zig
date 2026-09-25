@@ -83,10 +83,12 @@ fn walk(path: []const u8, depth: u64, root_dev: u64, top: bool) !u64 {
             if (max_depth == null or depth <= max_depth.?) try printSize(total, path);
             return total;
         };
+        defer c.freeNames(names);
         c.sortStrings(names);
         var sub_total: u64 = 0;
         for (names) |n| {
             const full = c.join(path, n);
+            defer c.gpa.free(full);
             const s = try walk(full, depth + 1, if (root_dev == 0) st.dev else root_dev, false);
             const child_st = c.sys.lstat(full) catch null;
             if (separate and child_st != null and child_st.?.isDir()) continue;

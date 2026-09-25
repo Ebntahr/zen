@@ -830,3 +830,23 @@ test "printf integer formatting" {
     try fmtUnsigned(&w, .{ .conv = 'o', .hash = true }, 8);
     try std.testing.expectEqualStrings("-0042|0xff|7   |+005|010", w.buffered());
 }
+
+test "printf spec parsing" {
+    const ps = parseSpec("%-08.3lfX", 1).?;
+    try std.testing.expect(ps.spec.minus and ps.spec.zero);
+    try std.testing.expectEqual(@as(?usize, 8), ps.spec.width);
+    try std.testing.expectEqual(@as(?usize, 3), ps.spec.prec);
+    try std.testing.expectEqual(@as(u8, 'f'), ps.spec.conv);
+    try std.testing.expectEqual(@as(usize, 8), ps.end);
+    const st = parseSpec("%*.*d", 1).?;
+    try std.testing.expect(st.width_star and st.prec_star);
+    try std.testing.expect(parseSpec("%", 1) == null);
+    // exact decimal conversion
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("0.1000000000000000055511", fixedStr(&buf, 0.1, 22));
+    try std.testing.expectEqualStrings("1", fixedStr(&buf, 0.5000001, 0));
+    try std.testing.expectEqualStrings("0", fixedStr(&buf, 0.5, 0));
+    const r = sciStr(&buf, 9.9999, 2);
+    try std.testing.expectEqualStrings("1.00", r[0]);
+    try std.testing.expectEqual(@as(i32, 1), r[1]);
+}

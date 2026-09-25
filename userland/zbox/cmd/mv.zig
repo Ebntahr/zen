@@ -32,7 +32,12 @@ fn removeTree(path: []const u8) bool {
     const st = c.sys.lstat(path) catch return false;
     if (st.isDir()) {
         const names = c.readDirNames(path) catch return false;
-        for (names) |n| _ = removeTree(c.join(path, n));
+        defer c.freeNames(names);
+        for (names) |n| {
+            const full = c.join(path, n);
+            defer c.gpa.free(full);
+            _ = removeTree(full);
+        }
         c.sys.rmdir(path) catch return false;
         return true;
     }

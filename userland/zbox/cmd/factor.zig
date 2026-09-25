@@ -101,7 +101,7 @@ fn doOne(s: []const u8) !bool {
     var fs: std.ArrayList(u64) = .empty;
     defer fs.deinit(c.gpa);
     factorize(n, &fs);
-    mem.sort(u64, fs.items, {}, std.sort.asc(u64));
+    std.sort.insertion(u64, fs.items, {}, std.sort.asc(u64));
     try c.out.print("{d}:", .{n});
     var i: usize = 0;
     while (i < fs.items.len) {
@@ -133,7 +133,7 @@ pub fn main(args: c.Args) !u8 {
     var status: u8 = 0;
     if (nums.items.len == 0) {
         var r = c.LineReader.init(0);
-        while (try r.next()) |line| {
+        while (r.nextw()) |line| {
             var it = mem.tokenizeAny(u8, line, " \t");
             while (it.next()) |tok| if (!try doOne(tok)) {
                 status = 1;

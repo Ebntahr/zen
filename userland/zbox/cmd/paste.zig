@@ -67,7 +67,8 @@ pub fn main(args: c.Args) !u8 {
             r.delim = eol;
             var k: usize = 0;
             var first = true;
-            while (try r.next()) |line| {
+            r.name = f;
+            while (r.nextw()) |line| {
                 if (!first) {
                     try putDelim(w, delims[k % delims.len]);
                     k += 1;
@@ -86,6 +87,7 @@ pub fn main(args: c.Args) !u8 {
         try fds.append(c.gpa, fd);
         var r = c.LineReader.init(fd);
         r.delim = eol;
+        r.name = f;
         try readers.append(c.gpa, r);
     }
     // stdin used multiple times shares one reader
@@ -109,14 +111,23 @@ pub fn main(args: c.Args) !u8 {
             }
             if (readers.items[idx]) |*x| rr = x else continue;
             _ = ro;
-            if (try rr.next()) |line| {
+            if (rr.nextw()) |line| {
                 any = true;
                 try line_buf.appendSlice(c.gpa, line);
             }
         }
         if (!any) break;
+        for (readers.items) |ro| if (ro) |r| if (r.failed) {
+            any = false;
+        };
+        if (!any) {
+            try w.writeAll(line_buf.items);
+            try w.writeByte(eol);
+            return 1;
+        }
         try w.writeAll(line_buf.items);
         try w.writeByte(eol);
     }
+    for (readers.items) |ro| if (ro) |r| if (r.failed) return 1;
     return 0;
 }

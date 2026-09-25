@@ -84,6 +84,7 @@ fn removeOne(path: []const u8, root_dev: u64) bool {
             c.warn("cannot remove {f}: {s}", .{ c.q(path), c.strerror(e) });
             return false;
         };
+        defer c.freeNames(names);
         if (interactive and names.len > 0 and !prompt("descend into directory {f}? ", .{c.q(path)})) return true;
         var ok = true;
         for (names) |n| {
