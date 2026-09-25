@@ -26,6 +26,19 @@ var stdout_w = std.fs.File.stdout().writer(&stdout_buf);
 const out = &stdout_w.interface;
 
 var prog: []const u8 = "zauth";
+/// `sudo -S` / `passwd --stdin`: read passwords from standard input.
+var passwords_from_stdin = false;
+
+fn readStdinLine() ![]u8 {
+    var line: std.ArrayList(u8) = .empty;
+    var c: [1]u8 = undefined;
+    while (true) {
+        const n = std.posix.read(0, &c) catch 0;
+        if (n == 0 or c[0] == '\n') break;
+        if (c[0] != '\r') try line.append(gpa, c[0]);
+    }
+    return line.toOwnedSlice(gpa);
+}
 
 fn fail(comptime fmt: []const u8, args: anytype) noreturn {
     err_out.print("{s}: " ++ fmt ++ "\n", .{prog} ++ args) catch {};
@@ -40,6 +53,7 @@ fn openTty() !std.fs.File {
 
 /// Prompt without echo; returns the typed line (caller frees).
 fn readPassword(prompt: []const u8) ![]u8 {
+    if (passwords_from_stdin) return readStdinLine();
     const tty = try openTty();
     _ = tty.write(prompt) catch {};
     const saved = posix.tcgetattr(tty.handle) catch null;
@@ -254,6 +268,8 @@ fn cmdSudo(args: []const []const u8) !void {
             shell = true;
         } else if (std.mem.eql(u8, a, "-i")) {
             login = true;
+        } else if (std.mem.eql(u8, a, "-S")) {
+            passwords_from_stdin = true;
         } else if (std.mem.eql(u8, a, "-k")) {
             const path = try std.fmt.allocPrint(gpa, "/var/run/sudo/{d}", .{linux.getuid()});
             std.fs.cwd().deleteFile(path) catch {};
@@ -307,7 +323,12 @@ fn cmdSudo(args: []const []const u8) !void {
     execv(cmd[0], cmd, env.items);
 }
 
-fn cmdPasswd(args: []const []const u8) !void {
+fn cmdPasswd(args_in: []const []const u8) !void {
+    var args = args_in;
+    if (args.len > 0 and std.mem.eql(u8, args[0], "--stdin")) {
+        passwords_from_stdin = true;
+        args = args[1..];
+    }
     var db = loadDb();
     const me = currentUser(&db);
     const target = if (args.len > 0) args[0] else me.name;
