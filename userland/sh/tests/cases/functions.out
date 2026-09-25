@@ -1,0 +1,26 @@
+f called with 0 args: 
+f called with 1 args: a
+f called with 3 args: a b c d
+g: $1=x
+status=42
+inner: 1 2
+outer after inner: 3
+counter=3
+inside: x y
+outside: a b c
+depth 3
+depth 2
+depth 1
+144
+one
+two
+to file
+in subshell func
+subsh status=5
+loopy=2
+in: local
+out: global
+defined inside
+$0 unchanged: functions.sh
+implicit return: 1
+[exit 0]

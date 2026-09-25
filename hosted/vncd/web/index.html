@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zen OS</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0b10; --pill: rgba(40, 40, 48, 0.72); --fg: #f2f2f7; --dim: #9a9aa6; --accent: #0a84ff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; font: 13px/1.3 -apple-system, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif; color: var(--fg); }
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  canvas { display: block; outline: none; box-shadow: 0 20px 80px rgba(0,0,0,.6); border-radius: 10px; background: #000; touch-action: none; }
+  canvas.crisp { image-rendering: pixelated; }
+  #bar { position: fixed; top: 10px; left: 50%; transform: translate(-50%, 0); display: flex; gap: 6px; align-items: center;
+         padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--pill); backdrop-filter: blur(20px) saturate(1.6);
+         -webkit-backdrop-filter: blur(20px) saturate(1.6); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 8px 30px rgba(0,0,0,.35);
+         transition: opacity .35s, transform .35s; z-index: 5; user-select: none; }
+  #bar.hidden { opacity: 0; transform: translate(-50%, -140%); pointer-events: none; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: #ff9f0a; box-shadow: 0 0 8px currentColor; }
+  #dot.ok { background: #30d158; } #dot.bad { background: #ff453a; }
+  #title { font-weight: 600; margin-right: 6px; }
+  button { font: inherit; color: var(--fg); background: rgba(255,255,255,.08); border: 0; border-radius: 999px; padding: 5px 11px; cursor: pointer; }
+  button:hover { background: rgba(255,255,255,.16); }
+  button.on { background: var(--accent); }
+  #overlay { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  #overlay div { padding: 14px 22px; border-radius: 14px; background: var(--pill); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); color: var(--dim); text-align: center; }
+  #overlay b { color: var(--fg); display: block; font-size: 15px; margin-bottom: 4px; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="screen" width="1280" height="800" tabindex="0"></canvas></div>
+<div id="bar">
+  <span id="dot"></span><span id="title">Zen OS</span>
+  <button id="swap" title="Use Ctrl as ⌘ Command (and the Windows/Super key as Ctrl)">Ctrl ⇄ ⌘</button>
+  <button id="fit" title="Scale the screen to the window">Fit</button>
+  <button id="full" title="Full screen">⛶</button>
+  <button id="again" title="Reconnect">↻</button>
+</div>
+<div id="overlay"><div><b id="ov1">Connecting to Zen OS…</b><span id="ov2">جارٍ الاتصال بنظام Zen</span></div></div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const canvas = $("screen"), ctx = canvas.getContext("2d", { alpha: false });
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+let swap = localStorage.getItem("zen.swap") ?? (isMac ? "0" : "1");
+let fit = localStorage.getItem("zen.fit") ?? "1";
+
+// Physical key (KeyboardEvent.code) → QEMU key number (XT set 1).
+const QNUM = {
+  Escape:0x01, Digit1:0x02, Digit2:0x03, Digit3:0x04, Digit4:0x05, Digit5:0x06, Digit6:0x07, Digit7:0x08, Digit8:0x09, Digit9:0x0a, Digit0:0x0b,
+  Minus:0x0c, Equal:0x0d, Backspace:0x0e, Tab:0x0f, KeyQ:0x10, KeyW:0x11, KeyE:0x12, KeyR:0x13, KeyT:0x14, KeyY:0x15, KeyU:0x16, KeyI:0x17,
+  KeyO:0x18, KeyP:0x19, BracketLeft:0x1a, BracketRight:0x1b, Enter:0x1c, ControlLeft:0x1d, KeyA:0x1e, KeyS:0x1f, KeyD:0x20, KeyF:0x21,
+  KeyG:0x22, KeyH:0x23, KeyJ:0x24, KeyK:0x25, KeyL:0x26, Semicolon:0x27, Quote:0x28, Backquote:0x29, ShiftLeft:0x2a, Backslash:0x2b,
+  KeyZ:0x2c, KeyX:0x2d, KeyC:0x2e, KeyV:0x2f, KeyB:0x30, KeyN:0x31, KeyM:0x32, Comma:0x33, Period:0x34, Slash:0x35, ShiftRight:0x36,
+  NumpadMultiply:0x37, AltLeft:0x38, Space:0x39, CapsLock:0x3a, F1:0x3b, F2:0x3c, F3:0x3d, F4:0x3e, F5:0x3f, F6:0x40, F7:0x41, F8:0x42,
+  F9:0x43, F10:0x44, NumLock:0x45, ScrollLock:0x46, Numpad7:0x47, Numpad8:0x48, Numpad9:0x49, NumpadSubtract:0x4a, Numpad4:0x4b,
+  Numpad5:0x4c, Numpad6:0x4d, NumpadAdd:0x4e, Numpad1:0x4f, Numpad2:0x50, Numpad3:0x51, Numpad0:0x52, NumpadDecimal:0x53,
+  IntlBackslash:0x56, F11:0x57, F12:0x58, NumpadEnter:0x9c, ControlRight:0x9d, NumpadDivide:0xb5, PrintScreen:0xb7, AltRight:0xb8,
+  Home:0xc7, ArrowUp:0xc8, PageUp:0xc9, ArrowLeft:0xcb, ArrowRight:0xcd, End:0xcf, ArrowDown:0xd0, PageDown:0xd1, Insert:0xd2,
+  Delete:0xd3, MetaLeft:0xdb, MetaRight:0xdc, OSLeft:0xdb, OSRight:0xdc, ContextMenu:0xdd,
+};
+const SWAPPED = { ControlLeft:0xdb, ControlRight:0xdc, MetaLeft:0x1d, MetaRight:0x9d, OSLeft:0x1d, OSRight:0x9d };
+const KEYSYM = { Enter:0xff0d, Backspace:0xff08, Tab:0xff09, Escape:0xff1b, Delete:0xffff, Home:0xff50, End:0xff57, PageUp:0xff55,
+  PageDown:0xff56, ArrowLeft:0xff51, ArrowUp:0xff52, ArrowRight:0xff53, ArrowDown:0xff54, Insert:0xff63, Shift:0xffe1, Control:0xffe3,
+  Alt:0xffe9, Meta:0xffeb, CapsLock:0xffe5 };
+
+let ws = null, W = 1280, H = 800, extKeys = false, connected = false, retry = 0, timer = null;
+let chunks = [], avail = 0, state = "version", buttons = 0;
+const down = new Set();
+
+function status(kind, a, b) {
+  $("dot").className = kind;
+  $("ov1").textContent = a; $("ov2").textContent = b;
+  $("overlay").classList.toggle("hide", kind === "ok");
+}
+
+// ---- input buffer ----------------------------------------------------------
+function push(buf) { chunks.push(new Uint8Array(buf)); avail += buf.byteLength; }
+function peek(n) { // contiguous view of the first n bytes (merging chunks if needed)
+  if (avail < n) return null;
+  if (chunks[0].length < n) {
+    const m = new Uint8Array(avail); let o = 0;
+    for (const c of chunks) { m.set(c, o); o += c.length; }
+    chunks = [m];
+  }
+  return chunks[0];
+}
+function drop(n) {
+  avail -= n;
+  while (n > 0) { const c = chunks[0]; if (c.length <= n) { n -= c.length; chunks.shift(); } else { chunks[0] = c.subarray(n); n = 0; } }
+}
+const u16 = (b, o) => (b[o] << 8) | b[o + 1];
+const u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+const s32 = (b, o) => (b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
+
+function send(bytes) { if (ws && ws.readyState === 1) ws.send(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)); }
+function be32(v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; }
+
+function requestUpdate(incremental) {
+  send([3, incremental ? 1 : 0, 0, 0, 0, 0, W >> 8, W & 255, H >> 8, H & 255]);
+}
+
+// ---- protocol ----------------------------------------------------------------
+const ZEN_DEFLATE = 0x5A454E01;
+async function inflate(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// Messages are handled one at a time; decompression is asynchronous, so
+// data can arrive while a message is being handled: parse again then.
+let pumping = false, arrived = false;
+async function pump() {
+  arrived = true;
+  if (pumping) return;
+  pumping = true;
+  try {
+    while (arrived) { arrived = false; await parse(); }
+  } finally { pumping = false; }
+}
+
+async function parse() {
+  for (;;) {
+    if (state === "version") {
+      const b = peek(12); if (!b) return;
+      drop(12); send(new TextEncoder().encode("RFB 003.008\n")); state = "sectypes";
+    } else if (state === "sectypes") {
+      const b = peek(1); if (!b) return;
+      const n = b[0]; if (n === 0) { fail("Server refused the connection"); return; }
+      const t = peek(1 + n); if (!t) return;
+      if (!t.subarray(1, 1 + n).includes(1)) { fail("No supported security type"); return; }
+      drop(1 + n); send([1]); state = "secresult";
+    } else if (state === "secresult") {
+      const b = peek(4); if (!b) return;
+      if (u32(b, 0) !== 0) { fail("Authentication failed"); return; }
+      drop(4); send([1]); state = "serverinit";
+    } else if (state === "serverinit") {
+      const b = peek(24); if (!b) return;
+      const nl = u32(b, 20); const all = peek(24 + nl); if (!all) return;
+      W = u16(all, 0); H = u16(all, 2);
+      document.title = new TextDecoder().decode(all.subarray(24, 24 + nl)) || "Zen OS";
+      drop(24 + nl);
+      canvas.width = W; canvas.height = H; layout();
+      // 32-bit little-endian RGBX: the bytes go straight into ImageData.
+      send([0, 0, 0, 0, 32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 0, 8, 16, 0, 0, 0]);
+      // Compressed updates (vncd's private deflate encoding) for remote
+      // viewers; on this machine raw pixels are faster.
+      const local = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname);
+      const enc = (!local && "DecompressionStream" in window) ? [ZEN_DEFLATE, 0, -239, -258] : [0, -239, -258];
+      send([2, 0, 0, enc.length].concat(...enc.map(be32)));
+      requestUpdate(false);
+      state = "msg"; connected = true; retry = 0;
+      status("ok", "", ""); canvas.focus();
+    } else {
+      const b = peek(1); if (!b) return;
+      const used = await message(); if (used === 0) return;
+      drop(used);
+    }
+  }
+}
+
+// Returns the bytes used by one complete server message, or 0 to wait.
+async function message() {
+  const t = chunks[0][0];
+  if (t === 0) { // FramebufferUpdate
+    let b = peek(4); if (!b) return 0;
+    const n = u16(b, 2); let o = 4;
+    // First check the whole update is here.
+    for (let i = 0; i < n; i++) {
+      b = peek(o + 12); if (!b) return 0;
+      const w = u16(b, o + 4), h = u16(b, o + 6), e = s32(b, o + 8);
+      o += 12;
+      if (e === 0) o += w * h * 4;
+      else if (e === -239) o += w * h * 4 + ((w + 7) >> 3) * h;
+      else if (e === ZEN_DEFLATE) { b = peek(o + 4); if (!b) return 0; o += 4 + u32(b, o); }
+      if (!peek(o)) return 0;
+    }
+    b = peek(o); o = 4;
+    for (let i = 0; i < n; i++) {
+      const x = u16(b, o), y = u16(b, o + 2), w = u16(b, o + 4), h = u16(b, o + 6), e = s32(b, o + 8);
+      o += 12;
+      if (e === 0) {
+        if (w && h) ctx.putImageData(new ImageData(new Uint8ClampedArray(b.buffer, b.byteOffset + o, w * h * 4), w, h), x, y);
+        o += w * h * 4;
+      } else if (e === ZEN_DEFLATE) {
+        const len = u32(b, o);
+        const px = await inflate(b.subarray(o + 4, o + 4 + len));
+        if (w && h && px.length >= w * h * 4) ctx.putImageData(new ImageData(new Uint8ClampedArray(px.buffer, 0, w * h * 4), w, h), x, y);
+        o += 4 + len;
+      } else if (e === -239) {
+        setCursor(b.subarray(o, o + w * h * 4 + ((w + 7) >> 3) * h), x, y, w, h);
+        o += w * h * 4 + ((w + 7) >> 3) * h;
+      } else if (e === -258) {
+        extKeys = true;
+      }
+    }
+    requestUpdate(true);
+    return o;
+  }
+  if (t === 2) return 1; // Bell
+  if (t === 3) { // ServerCutText
+    const b = peek(8); if (!b) return 0;
+    const len = u32(b, 4); const all = peek(8 + len); if (!all) return 0;
+    const text = new TextDecoder().decode(all.subarray(8, 8 + len));
+    if (navigator.clipboard && document.hasFocus()) navigator.clipboard.writeText(text).catch(() => {});
+    return 8 + len;
+  }
+  fail("Unexpected message " + t);
+  return 0;
+}
+
+function setCursor(data, hx, hy, w, h) {
+  if (!w || !h) { canvas.style.cursor = "none"; return; }
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const img = new ImageData(w, h), mask = data.subarray(w * h * 4), stride = (w + 7) >> 3;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, on = mask[y * stride + (x >> 3)] & (0x80 >> (x & 7));
+    img.data[i] = data[i]; img.data[i + 1] = data[i + 1]; img.data[i + 2] = data[i + 2]; img.data[i + 3] = on ? 255 : 0;
+  }
+  c.getContext("2d").putImageData(img, 0, 0);
+  const s = scale();
+  canvas.style.cursor = `url(${c.toDataURL()}) ${Math.round(hx)} ${Math.round(hy)}, default`;
+  if (s < 0.75) canvas.style.cursor = "default"; // a scaled-down screen: the system arrow fits better
+}
+
+function fail(msg) {
+  status("bad", msg, "تعذّر الاتصال");
+  if (ws) ws.close();
+}
+
+// ---- connection --------------------------------------------------------------
+function connect() {
+  clearTimeout(timer);
+  chunks = []; avail = 0; state = "version"; extKeys = false; connected = false;
+  status("", "Connecting to Zen OS…", "جارٍ الاتصال بنظام Zen");
+  const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/websockify";
+  ws = new WebSocket(url, ["binary"]);
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = (ev) => { push(ev.data); pump(); };
+  ws.onclose = () => {
+    ws = null; connected = false;
+    status("bad", "Disconnected — reconnecting…", "انقطع الاتصال — إعادة المحاولة");
+    timer = setTimeout(connect, Math.min(5000, 400 * ++retry));
+  };
+}
+
+// ---- keyboard ----------------------------------------------------------------
+function keysym(e) {
+  if (e.key.length === 1) { const c = e.key.codePointAt(0); return c < 256 ? c : 0x01000000 | c; }
+  return KEYSYM[e.key] || 0;
+}
+function sendKey(e, isDown) {
+  let q = (swap === "1" && SWAPPED[e.code]) || QNUM[e.code] || 0;
+  if (extKeys && q) {
+    send([255, 0, 0, isDown ? 1 : 0, ...be32(keysym(e)), ...be32(q)]);
+  } else {
+    const k = keysym(e); if (k) send([4, isDown ? 1 : 0, 0, 0, ...be32(k)]);
+  }
+}
+let pasteKey = null;
+function isPaste(e) {
+  const cmd = isMac ? e.metaKey : (swap === "1" ? e.ctrlKey : e.metaKey);
+  return cmd && e.code === "KeyV";
+}
+// Modifiers the browser reports as held but whose keydown never reached us
+// (pressed before the page had focus, sticky keys, on-screen keyboards).
+const MODS = [["shiftKey", "ShiftLeft", "Shift"], ["ctrlKey", "ControlLeft", "Control"], ["altKey", "AltLeft", "Alt"], ["metaKey", "MetaLeft", "Meta"]];
+let synthetic = [];
+function syncMods(e) {
+  for (const [flag, code, key] of MODS) {
+    if (e.code === code || e.key === key) continue;
+    const held = [...down].some((c) => c.startsWith(key === "Meta" ? "Meta" : key) || (key === "Meta" && c.startsWith("OS")));
+    if (e[flag] && !held) { sendKey({ code, key }, true); synthetic.push(code); }
+  }
+}
+function releaseSynthetic() {
+  for (const code of synthetic) sendKey({ code, key: "" }, false);
+  synthetic = [];
+}
+window.addEventListener("keydown", (e) => {
+  if (!connected || document.activeElement !== canvas) return;
+  if (isPaste(e)) { pasteKey = e; setTimeout(() => { if (pasteKey) { sendKey(e, true); sendKey(e, false); pasteKey = null; } }, 150); return; }
+  e.preventDefault();
+  syncMods(e);
+  down.add(e.code); sendKey(e, true);
+  if (synthetic.length && !MODS.some((m) => m[1] === e.code)) { sendKey(e, false); down.delete(e.code); releaseSynthetic(); }
+}, true);
+window.addEventListener("keyup", (e) => {
+  if (!connected) return;
+  if (e.code === "KeyV" && pasteKey === null && !down.has("KeyV")) return;
+  if (!down.has(e.code)) return;
+  e.preventDefault();
+  down.delete(e.code); sendKey(e, false);
+}, true);
+document.addEventListener("paste", (e) => {
+  if (!connected || !pasteKey) return;
+  e.preventDefault();
+  const text = e.clipboardData.getData("text/plain");
+  const bytes = new TextEncoder().encode(text);
+  const msg = new Uint8Array(8 + bytes.length); msg.set([6, 0, 0, 0, ...be32(bytes.length)]); msg.set(bytes, 8);
+  send(msg);
+  const k = pasteKey; pasteKey = null;
+  sendKey(k, true); sendKey(k, false);
+});
+window.addEventListener("blur", () => { // release keys held when focus leaves
+  for (const code of down) sendKey({ code, key: "" }, false);
+  down.clear();
+});
+
+// ---- pointer -------------------------------------------------------------------
+function scale() { const r = canvas.getBoundingClientRect(); return r.width / W; }
+function pos(e) {
+  const r = canvas.getBoundingClientRect();
+  const x = Math.max(0, Math.min(W - 1, Math.floor((e.clientX - r.left) * W / r.width)));
+  const y = Math.max(0, Math.min(H - 1, Math.floor((e.clientY - r.top) * H / r.height)));
+  return [x, y];
+}
+function pointer(e, mask) {
+  if (!connected) return;
+  const [x, y] = pos(e);
+  send([5, mask, x >> 8, x & 255, y >> 8, y & 255]);
+}
+const maskOf = (b) => (b & 1) | ((b & 4) ? 2 : 0) | ((b & 2) ? 4 : 0);
+canvas.addEventListener("pointermove", (e) => { buttons = maskOf(e.buttons); pointer(e, buttons); });
+canvas.addEventListener("pointerdown", (e) => { canvas.focus(); canvas.setPointerCapture(e.pointerId); buttons = maskOf(e.buttons); pointer(e, buttons); e.preventDefault(); });
+canvas.addEventListener("pointerup", (e) => { buttons = maskOf(e.buttons); pointer(e, buttons); });
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+let wheelAcc = 0;
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  wheelAcc += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+  while (Math.abs(wheelAcc) >= 40) {
+    const bit = wheelAcc < 0 ? 8 : 16;
+    pointer(e, buttons | bit); pointer(e, buttons);
+    wheelAcc -= Math.sign(wheelAcc) * 40;
+  }
+}, { passive: false });
+
+// ---- layout and toolbar ----------------------------------------------------------
+function layout() {
+  const vw = innerWidth - 24, vh = innerHeight - 24;
+  const s = fit === "1" ? Math.min(vw / W, vh / H) : Math.min(1, vw / W, vh / H);
+  canvas.style.width = Math.floor(W * s) + "px"; canvas.style.height = Math.floor(H * s) + "px";
+  canvas.classList.toggle("crisp", Math.abs(s - 1) < 0.01 || s >= 2);
+  $("swap").classList.toggle("on", swap === "1");
+  $("fit").classList.toggle("on", fit === "1");
+}
+addEventListener("resize", layout);
+$("swap").onclick = () => { swap = swap === "1" ? "0" : "1"; localStorage.setItem("zen.swap", swap); layout(); canvas.focus(); };
+$("fit").onclick = () => { fit = fit === "1" ? "0" : "1"; localStorage.setItem("zen.fit", fit); layout(); canvas.focus(); };
+$("full").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); canvas.focus(); };
+$("again").onclick = () => { if (ws) ws.close(); else connect(); canvas.focus(); };
+let hideTimer = null;
+function showBar() { $("bar").classList.remove("hidden"); clearTimeout(hideTimer); hideTimer = setTimeout(() => $("bar").classList.add("hidden"), 2500); }
+addEventListener("mousemove", (e) => { if (e.clientY < 60) showBar(); });
+showBar(); layout(); connect();
+</script>
+</body>
+</html>

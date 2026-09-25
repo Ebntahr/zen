@@ -1,0 +1,23 @@
+a: a or b
+b: a or b
+42: starts with digit
+notes.txt: text
+*: literal star
+q*: quoted q*
+qq: other
+empty
+z: single char
+hello: other
+multi
+line
+paren-pattern
+star-mid
+space
+var-pattern
+literal-dollar
+empty body status: 0
+no match status: 0
+first
+second-without-semis
+in-cmdsub
+[exit 0]

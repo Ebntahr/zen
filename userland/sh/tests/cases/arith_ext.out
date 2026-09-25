@@ -1,0 +1,12 @@
+5 6 6 5 6 5
+1024 1 512
+10 255 15 35
+arith cmd true
+arith cmd false
+20
+42 21
+let zero is false
+14
+2
+9
+[exit 0]

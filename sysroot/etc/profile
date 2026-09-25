@@ -1,0 +1,11 @@
+# /etc/profile — read by login shells.
+export PATH=/usr/local/bin:/usr/bin:/bin
+[ "$(id -u)" = 0 ] && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export EDITOR=edit
+export PAGER=less
+export LANG=en_US.UTF-8
+export CC=cc CXX=c++
+alias ls='ls --color=auto'
+alias ll='ls -lh'
+alias la='ls -lah'
+alias grep='grep --color=auto'

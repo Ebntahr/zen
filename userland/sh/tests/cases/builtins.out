@@ -1,0 +1,66 @@
+plain
+no newline
+esc	apes
+2nd
+raw\t
+-- dashdash
+-x not-an-option
+a|b
+c|
+42 -7 3 ff FF 10 A %
+[   ab][cd   ][xy][00042][7   ][+5][ 5]
+3.142 2 1.234568e+04 0.0001 100000
+no args
+x=1 y=
+b	escape
+has\ space
+97
+pv=007
+tab	here
+eq
+and
+file
+dir
+nofile
+empty-false
+nonempty-true
+not
+numeric
+lt
+zn
+paren
+bad int status 2
+b c d
+d
+shift too many: 1
+2
+b
+child sees exported
+child sees []
+temp: temporary
+after temp: []
+after unset []
+readonly enforced
+eval-ran
+12
+from variable
+echo is a shell builtin
+cd is a shell builtin
+printf
+not found by command -v
+via-command
+true 0
+false 1
+colon 0
+0027
+6
+a=first b=second third
+back\slash
+backslash
+one / two:three
+REPLY=no names
+status 1 l=no newline at end
+KILL
+2
+pwd-ok
+[exit 0]

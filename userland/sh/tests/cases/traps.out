@@ -1,0 +1,11 @@
+got USR1
+after usr1
+got HUP
+usr2 ignored
+in subshell
+subshell exit
+subshell with parent trap
+trap in func
+caught TERM
+exit trap, status 9
+[exit 9]

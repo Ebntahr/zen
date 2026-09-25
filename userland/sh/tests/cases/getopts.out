@@ -1,0 +1,21 @@
+flag a
+b=val
+remaining: file
+flag a
+flag c
+b=val
+remaining: x y
+remaining: -a
+remaining: nonopt -a
+invalid
+remaining: 
+invalid
+remaining: 
+missing arg for x
+unknown q
+x=1
+x=2
+pos opt a
+pos opt c
+OPTIND=3
+[exit 0]

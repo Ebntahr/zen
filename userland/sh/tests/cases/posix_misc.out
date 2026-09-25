@@ -1,0 +1,29 @@
+[a b]
+[a b]
+[a b]
+tilde in export
+12
+special builtin assignment persists: 1
+regular builtin assignment: []
+[unset]
+redir failure nonzero
+to fd3
+captured
+l=a
+l=b
+pipe subshell var: []
+n=6
+g=7
+after subshell return 3
+a b,c
+2
+cd home
+'echo t' USR2
+[gone]
+fn unset
+1
+24
+alpha-class
+a\b
+c\d
+[exit 0]

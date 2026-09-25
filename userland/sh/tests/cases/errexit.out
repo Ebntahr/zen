@@ -1,0 +1,11 @@
+or ok
+bang ok
+conditionals ok
+in f after false: runs because f in condition
+f ok
+in f after false: runs because f in condition
+sub-ok
+group ok
+subshell or ok
+before failure
+[exit 4]

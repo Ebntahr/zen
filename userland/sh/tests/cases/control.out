@@ -1,0 +1,40 @@
+i=1
+i=2
+i=3
+[a][b c][d]
+<x><y><z>
+{x}{y}{z}
+while 1
+while 2
+while 3
+until 3
+until 2
+until 1
+loop 1
+loop 3
+a1
+b1
+a1
+then
+else
+3
+negated
+and-true
+or-false
+chain
+brace
+group
+group status 1
+x=5
+while-false status 0
+loop done 3
+a
+b
+last: 3
+test or
+k=2
+k=1
+y
+y
+in pipe 1
+[exit 0]

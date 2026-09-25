@@ -1,0 +1,12 @@
+have pid
+wait status 0
+bg exit 3
+background-out
+after wait-all
+waited three
+in-bg-group
+false bg 1
+b
+sub x=2
+parent x=1
+[exit 0]

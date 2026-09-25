@@ -1,0 +1,9 @@
+Welcome to Zen OS!
+
+Zen OS is a desktop operating system written entirely in Zig for RISC-V 64.
+
+  * Microkernel: drivers, file systems and the window server run as
+    ordinary user-space programs.
+  * Everything is a URL: file:/Users/zen, sys:proc, display:0, pty:3 ...
+  * Apps run in App Sandbox containers and are code-signed.
+  * POSIX tools (ls, grep, sed, find ...) and a C/C++ toolchain.

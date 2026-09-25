@@ -1,0 +1,28 @@
+simple
+backtick
+quoted spaces
+unquoted spaces
+[trailing]
+[
+
+leading]
+nested deep
+bq-nested
+case-in-subst
+subshell-in-subst
+42
+ab
+status 3
+/
+pwd unchanged: yes
+1 2 3
+multi
+line
+a)b
+(paren)
+3
+x
+3
+*
+premidpost
+[exit 0]

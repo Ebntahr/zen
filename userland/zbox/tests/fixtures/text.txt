@@ -1,0 +1,9 @@
+The quick brown fox jumps over the lazy dog.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+
+  Indented line with	a tab.
+UPPER lower MiXeD 123 456
+foo bar baz foo
+The end of the text file is here.
+email: someone@example.com, other@test.org
+path=/usr/local/bin:/usr/bin:/bin

@@ -1,0 +1,23 @@
+a.txt b.txt sp ace.txt
+?
+ab
+a.txt ab abc
+a.txt ab abc b.txt
+b.txt c.log sp ace.txt sub sub2
+a.txt b.txt
+.hidden
+a.txt ab abc b.txt c.log sp ace.txt sub sub2
+sub/ sub2/
+sub/x.txt sub2/y.txt
+nomatch*
+*.txt *.txt *.txt
+c.log *.log
+*.txt
+[a.txt]
+[b.txt]
+[sp ace.txt]
+ab
+sub/../a.txt
+c.log
+d/c.log
+[exit 0]

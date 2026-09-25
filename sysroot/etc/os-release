@@ -1,0 +1,8 @@
+NAME="Zen OS"
+VERSION="1.0 (Golden Gate)"
+ID=zen
+VERSION_ID=1.0
+VERSION_CODENAME=goldengate
+PRETTY_NAME="Zen OS 1.0 Golden Gate"
+ARCHITECTURE=riscv64
+HOME_URL="https://github.com/Ebntahr/zen"

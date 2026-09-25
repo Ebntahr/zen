@@ -1,0 +1,23 @@
+function keyword
+function keyword with parens
+child: exported
+inner also
+outer [unset]
+declare -r readonly
+ERR trap: 1
+ERR trap: 3
+after err trap removed
+pipefail 1
+1
+12
+12
+here-string
+a b
+n=3
+256
+bc ABC
+a	b
+first
+a-b
+abc
+[exit 0]

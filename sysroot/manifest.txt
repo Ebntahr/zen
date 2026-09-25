@@ -1,0 +1,22 @@
+# Ownership and permissions applied when building the disk image.
+# path                         mode   uid  gid
+/                              0755   0    0
+/etc/shadow                    0600   0    0
+/etc/zen                       0755   0    0
+/var/root                      0700   0    0
+/tmp                           1777   0    0
+/usr/bin/zauth                 4755   0    0
+/Users                         0755   0    0
+/Users/zen                     0755   501  501
+/Users/zen/Desktop             0700   501  501
+/Users/zen/Documents           0700   501  501
+/Users/zen/Downloads           0755   501  501
+/Users/zen/Pictures            0700   501  501
+/Users/zen/Music               0700   501  501
+/Users/zen/Movies              0700   501  501
+/Users/zen/Library             0700   501  501
+/Users/zen/Library/Preferences 0700   501  501
+/Users/zen/Library/Containers  0700   501  501
+/Users/zen/.profile            0644   501  501
+/Users/zen/.zenshrc            0644   501  501
+/Users/zen/Documents/Welcome.txt 0644 501  501

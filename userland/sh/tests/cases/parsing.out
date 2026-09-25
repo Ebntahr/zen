@@ -1,0 +1,43 @@
+21 6
+paren-pat
+i=b
+a
+a#b
+x
+)
+(
+}
+a b
+if then else fi do done case esac in
+! {
+a=1
+b=2
+PIPED
+newline before brace
+subshell body
+yes
+continued continued
+it's
+2
+heredoc in subst a b
+r:1
+r:2
+nested in deep
+bq inner
+test with subst
+quoted alt unquoted alt
+a  b
+done-parsing
+3
+sep
+\n \n
+[] []
+0 0 0
+12 12
+7
+6
+6
+abcd
+multi
+line
+[exit 0]

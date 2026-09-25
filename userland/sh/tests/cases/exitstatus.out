@@ -1,0 +1,22 @@
+0
+1
+127
+126
+126
+42
+44
+7
+1
+0
+1
+0
+1
+if-no-branch 0
+if-false-body 1
+for 1
+assign-subst 9
+plain-assign 0
+func 5
+func-implicit 1
+signal 137
+[exit 3]

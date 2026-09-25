@@ -1,0 +1,12 @@
+/a/b
+/a/b/c
+/a/b
+ [/a/b]
+/a/b
+/with space
+cd failed
+/dir2
+/a/b
+BASE
+BASE/a/b
+[exit 0]
