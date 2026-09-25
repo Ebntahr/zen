@@ -11,3 +11,4 @@ zig-out/
 /legacy/run/iso/boot/zen
 /legacy/run/iso/servers/*
 keys/
+*.whl

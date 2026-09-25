@@ -57,6 +57,7 @@ const programs = [_]Program{
     .{ .name = "getty", .path = "userland/getty/main.zig", .deps = &.{"zen"}, .dir = "usr/sbin" },
     .{ .name = "zauth", .path = "userland/auth/main.zig", .deps = &.{"zen"}, .dir = "usr/bin" },
     .{ .name = "cc", .path = "userland/cc/main.zig", .dir = "usr/bin" },
+    .{ .name = "zenfetch", .path = "userland/zenfetch/main.zig", .dir = "usr/bin" },
     .{ .name = "zbox", .path = "userland/zbox/main.zig", .dir = "usr/bin" },
     .{ .name = "zensh", .path = "userland/sh/main.zig", .dir = "usr/bin" },
 };
@@ -87,6 +88,7 @@ const tests = [_]Lib{
     .{ .name = "wm", .path = "servers/windowserver/wm.zig", .deps = &.{"abi"} },
     .{ .name = "font", .path = "lib/font/root.zig" },
     .{ .name = "vt", .path = "lib/vt/root.zig" },
+    .{ .name = "ext2", .path = "lib/ext2/root.zig" },
     .{ .name = "fsd", .path = "servers/fsd/service.zig", .deps = &.{ "abi", "ext2" } },
     .{ .name = "gfx", .path = "lib/gfx/root.zig" },
     .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
