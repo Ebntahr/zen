@@ -6,6 +6,7 @@ pub const sandbox = @import("sandbox.zig");
 pub const window = @import("window.zig");
 pub const display = @import("display.zig");
 pub const input = @import("input.zig");
+pub const initfs = @import("initfs.zig");
 
 /// Kernel name reported by uname(2).
 pub const sysname = "Zen";
@@ -20,4 +21,5 @@ test {
     _ = window;
     _ = display;
     _ = input;
+    _ = initfs;
 }

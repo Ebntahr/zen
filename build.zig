@@ -37,6 +37,7 @@ const programs = [_]Program{
     .{ .name = "virtio-blkd", .path = "drivers/virtio-blk/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },
     .{ .name = "virtio-gpud", .path = "drivers/virtio-gpu/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },
     .{ .name = "launchd", .path = "servers/launchd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers" },
+    .{ .name = "cc", .path = "userland/cc/main.zig", .dir = "usr/bin" },
     .{ .name = "zauth", .path = "userland/auth/main.zig", .deps = &.{"zen"}, .dir = "usr/bin" },
     .{ .name = "virtio-inputd", .path = "drivers/virtio-input/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },
 };

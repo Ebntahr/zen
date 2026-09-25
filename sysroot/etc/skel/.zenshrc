@@ -1,0 +1,2 @@
+# ~/.zenshrc — interactive shell settings.
+alias ..='cd ..'

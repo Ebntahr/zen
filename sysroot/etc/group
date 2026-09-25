@@ -1,0 +1,7 @@
+wheel:x:0:root
+daemon:x:1:root
+tty:x:4:
+staff:x:20:root,zen
+admin:x:80:root,zen
+zen:x:501:
+nobody:x:65534:

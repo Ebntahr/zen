@@ -1,0 +1,7 @@
+
+  Welcome to Zen OS 1.0 "Golden Gate" (riscv64)
+
+  Everything is a URL:  try  `ls sys:proc`,  `cat sys:uname`,  `ls file:/`
+  C/C++:                `cc hello.c -o hello`   `c++ app.cpp -o app`
+  Help:                 `help`, `zbox --list`
+
