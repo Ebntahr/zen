@@ -55,7 +55,16 @@ Zen OS نظام تشغيل حديث مبني على نواة مصغّرة (micro
   الثلاثة، ووضع فاتح وداكن، وخطوط Inter وJetBrains Mono بمحرّك TrueType
   مكتوب بـ Zig، ودعم لوحة المفاتيح العربية.
 
+- **التطبيقات**: Finder وTerminal وSettings وTextEdit وCalculator
+  وActivity Monitor وشاشة تسجيل الدخول مع مساعد الإعداد الأولي.
+
 **الحساب الافتراضي:** المستخدم `zen` وكلمة المرور `zen` (عضو في مجموعة admin).
+
+**الحالة باختصار:** كل مساحة المستخدم (التعريفات والخوادم وسطح المكتب
+والتطبيقات والأدوات والصدفة) مكتوبة ومختبرة على جهاز التطوير، وتُبنى لمعمارية
+riscv64. أما النواة فأجزاؤها الأساسية (الذاكرة الافتراضية والمقاطعات
+والمُجدوِل واستدعاءات النظام) **لم تُكتب بعد**، لذلك لا يُقلع النظام حالياً.
+المواصفات الكاملة لما تحتاجه النواة موجودة في `docs/KERNEL_INTERFACE.md`.
 
 ---
 
@@ -145,9 +154,11 @@ zig c++ -target riscv64-linux-musl -static examples/cpp/hello.cpp -o hello-cpp
 |-----------|-------|
 | ABI, libzen, sandbox profiles, code signing, password hashing | ✅ written and tested |
 | virtio drivers, fsd (ext2), ptyd, launchd, init, getty, zauth, cc | ✅ written; build for riscv64 |
-| Fonts, terminal core, ext2 library, window-manager core | ✅ written and tested |
-| Graphics and Liquid Glass, shell, coreutils | 🔄 in progress |
-| Window-server rendering, GUI toolkit, apps | 🔄 in progress |
+| Fonts (with Arabic shaping), terminal core, ext2 library, graphics and Liquid Glass | ✅ written and tested |
+| Window server (compositor, menu bar, Dock, Spotlight, Control Center), GlassKit toolkit | ✅ written; rendered headless for previews |
+| Apps: Finder, Terminal, Settings, TextEdit, Calculator, Activity Monitor, login window | ✅ written and tested headless |
+| `zbox` coreutils (107 commands, 588 GNU comparison tests) | ✅ written and tested |
+| `zensh` POSIX shell | 🔄 being finished |
 | **Kernel**: boot entry, paging/VM, traps, scheduler, syscalls, kernel schemes | ❌ **not written**, so the system cannot boot yet |
 
 Done in the kernel so far: the linker script, CSR/SBI helpers, UART console,
