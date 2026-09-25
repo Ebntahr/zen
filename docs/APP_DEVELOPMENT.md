@@ -38,8 +38,15 @@ pub fn main() !void { try @import("ui").run(@import("app.zig").App); }
 3. Installs your menu, if the app has a `menu` function.
 4. Calls `frame` once per batch of input events.
 
-Optional hooks: `menu`, `onMenu`, `shouldClose`, `timeoutMs` (periodic
-refresh), `deinit` and `preview` (state used for screenshots).
+Optional hooks:
+
+- `menu`, `onMenu`: the menu bar;
+- `shouldClose`, `shouldQuit`: return false to ask about unsaved changes;
+- `openDocuments(self, u, paths)`: documents opened with the app while it
+  runs (Finder, `open file` in Terminal);
+- `timeoutMs`: periodic refresh; set `u.want_frame` for one extra frame;
+- `deinit`;
+- `preview`: state used for screenshots.
 
 Build and preview:
 
@@ -102,7 +109,10 @@ Built-in apps are signed during `zig build image` with the platform key in
 
 ## 4. Everything is a URL
 
-Any `std.fs` or POSIX call accepts URLs as well as paths:
+Open URLs with `zen.io` (`open`, `read`, `write`, `mmap`, `poll`, `readUrl`,
+`transact`). On Zen these are plain system calls. In hosted mode (see
+[HOSTED.md](HOSTED.md)) they reach the scheme's server over its socket.
+On Zen itself, any `std.fs` or POSIX call also accepts URLs:
 
 ```zig
 const f = try std.fs.cwd().openFile("sys:uname", .{});   // kernel info

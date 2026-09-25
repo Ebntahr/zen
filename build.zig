@@ -63,6 +63,7 @@ const programs = [_]Program{
     .{ .name = "zauth", .path = "userland/auth/main.zig", .deps = &.{"zen"}, .dir = "usr/bin" },
     .{ .name = "cc", .path = "userland/cc/main.zig", .dir = "usr/bin" },
     .{ .name = "zenfetch", .path = "userland/zenfetch/main.zig", .dir = "usr/bin" },
+    .{ .name = "open", .path = "userland/open/main.zig", .deps = &.{"zen"}, .dir = "usr/bin" },
     .{ .name = "zbox", .path = "userland/zbox/main.zig", .dir = "usr/bin" },
     .{ .name = "zensh", .path = "userland/sh/main.zig", .dir = "usr/bin" },
 };
@@ -83,6 +84,7 @@ const apps = [_]AppBundle{
     .{ .dir = "ActivityMonitor", .name = "Activity Monitor", .exe = "ActivityMonitor", .location = "System/Applications/Utilities" },
     .{ .dir = "TextEdit", .name = "TextEdit", .exe = "TextEdit" },
     .{ .dir = "Calculator", .name = "Calculator", .exe = "Calculator" },
+    .{ .dir = "Preview", .name = "Preview", .exe = "Preview" },
 };
 
 /// Files with host-runnable unit tests.
@@ -107,6 +109,7 @@ const tests = [_]Lib{
     .{ .name = "zbox", .path = "userland/zbox/tests.zig" },
     .{ .name = "zensh", .path = "userland/sh/unit_tests.zig" },
     .{ .name = "vncd", .path = "hosted/vncd/rfb.zig" },
+    .{ .name = "preview", .path = "apps/Preview/app.zig", .deps = ui_deps },
 };
 
 fn exists(path: []const u8) bool {

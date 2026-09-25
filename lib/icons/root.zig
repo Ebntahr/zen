@@ -64,6 +64,7 @@ pub const AppIcon = enum {
     textedit,
     calculator,
     activity,
+    preview,
     trash,
     trash_full,
     launchpad,
@@ -78,6 +79,7 @@ pub const AppIcon = enum {
             .{ "textedit", .textedit },
             .{ "calculator", .calculator },
             .{ "activity", .activity },
+            .{ "preview", .preview },
             .{ "trash", .trash },
             .{ "launchpad", .launchpad },
             .{ "zen", .zen },
@@ -194,6 +196,31 @@ fn drawAppInner(c: Canvas, a: std.mem.Allocator, icon: AppIcon, r: RectF) !void 
             try p.lineTo(66, 62);
             try p.lineTo(86, 62);
             try c.strokePath(&p, 3.2, rgb(0x3CF07A), .{ .transform = grid(r), .cap = .round });
+        },
+        .preview => {
+            // A photo on a light tile with a magnifying glass.
+            tile(c, r, rgb(0xFDFDFE), rgb(0xD9DFEA));
+            c.fillRoundRect(u(r, 15, 19, 62, 50), 4 * k, Color.rgba(0, 0, 0, 28));
+            c.fillRoundRect(u(r, 13, 16, 62, 50), 4 * k, rgb(0xFFFFFF));
+            const photo = u(r, 17, 20, 54, 42);
+            const sky = Paint.verticalGradient(photo, &.{ .{ .pos = 0, .color = rgb(0x3D9BFF) }, .{ .pos = 1, .color = rgb(0xB9E1FF) } });
+            c.fillRoundRect(photo, 2 * k, &sky);
+            c.fillCircle(r.x + 58 * k, r.y + 31 * k, 5 * k, rgb(0xFFD23F));
+            p.reset();
+            try p.moveTo(17, 62);
+            try p.lineTo(17, 52);
+            try p.quadTo(28, 38, 40, 50);
+            try p.quadTo(50, 42, 71, 52);
+            try p.lineTo(71, 62);
+            try p.close();
+            try c.fillPath(&p, rgb(0x34C759), .{ .transform = grid(r) });
+            // Magnifier.
+            c.fillCircle(r.x + 66 * k, r.y + 66 * k, 15 * k, Color.rgba(220, 238, 255, 150));
+            c.strokeCircle(r.x + 66 * k, r.y + 66 * k, 15 * k, 4.5 * k, rgb(0x3B4250));
+            p.reset();
+            try p.moveTo(77, 77);
+            try p.lineTo(88, 88);
+            try c.strokePath(&p, 7, rgb(0x3B4250), .{ .transform = grid(r), .cap = .round });
         },
         .trash, .trash_full => {
             // Translucent glass bin (no tile).

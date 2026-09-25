@@ -14,6 +14,8 @@ pub const path = @import("path.zig");
 pub const effects = @import("effects.zig");
 pub const glass = @import("glass.zig");
 pub const png = @import("png.zig");
+/// PNG decoding (`decode`, `decodeFile`).
+pub const png_decode = @import("png_decode.zig");
 pub const wallpaper = @import("wallpaper.zig");
 
 pub const Color = color.Color;
@@ -53,6 +55,7 @@ pub const GlassStyle = glass.GlassStyle;
 pub const prepareBackdrop = glass.prepareBackdrop;
 
 test {
+    _ = png_decode;
     std.testing.refAllDecls(@This());
     _ = color;
     _ = geom;

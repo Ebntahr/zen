@@ -213,6 +213,32 @@ pub fn docStyle(name: []const u8) struct { style: DocStyle, label: []const u8 } 
     return .{ .style = .generic, .label = "Document" };
 }
 
+/// Images Preview can show.
+pub fn isViewableImage(e: *const Entry) bool {
+    if (e.kind != .file) return false;
+    const ext = extension(e.name);
+    for ([_][]const u8{ "png", "ppm", "pgm" }) |x| if (std.ascii.eqlIgnoreCase(ext, x)) return true;
+    return false;
+}
+
+/// Quote an argument for a launchd command line ("a b" → "\"a b\"").
+pub fn quoteArg(out: []u8, arg: []const u8) []const u8 {
+    var n: usize = 0;
+    if (n < out.len) out[n] = '"';
+    n += 1;
+    for (arg) |ch| {
+        if (ch == '"' or ch == '\\') {
+            if (n < out.len) out[n] = '\\';
+            n += 1;
+        }
+        if (n < out.len) out[n] = ch;
+        n += 1;
+    }
+    if (n < out.len) out[n] = '"';
+    n += 1;
+    return out[0..@min(n, out.len)];
+}
+
 /// Files that open in TextEdit.
 pub fn isTextLike(e: *const Entry) bool {
     if (e.kind != .file) return false;

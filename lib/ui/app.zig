@@ -12,6 +12,8 @@
 //!                                                  to ask the user first, then
 //!                                                  set `u.quit` when done)
 //!   pub fn timeoutMs(self: *Self) i32             (periodic refresh, -1 = none)
+//!   pub fn openDocuments(self: *Self, *Ui, paths: []const []const u8) void
+//!                                                 (documents opened while running)
 //! Setting `u.want_frame` in `frame` requests another frame right away.
 //!   pub fn deinit(self: *Self) void
 
@@ -62,10 +64,26 @@ pub fn run(comptime App: type) !void {
             const q = if (@hasDecl(App, "shouldQuit")) app.shouldQuit(&u) else true;
             if (q) break;
         }
+        if (u.documents_pending) {
+            u.documents_pending = false;
+            if (@hasDecl(App, "openDocuments")) deliverDocuments(App, &app, &u, allocator);
+        }
         if (u.quit) break;
         app.frame(&u);
         u.endFrame();
     }
+}
+
+/// Fetch the documents launchd queued for us and hand them to the app.
+fn deliverDocuments(comptime App: type, app: *App, u: *ui_mod.Ui, allocator: std.mem.Allocator) void {
+    const zio = @import("zen").io;
+    const text = zio.readUrl(allocator, "launch:inbox", 256 * 1024) catch return;
+    defer allocator.free(text);
+    var paths: std.ArrayList([]const u8) = .empty;
+    defer paths.deinit(allocator);
+    var lines = std.mem.tokenizeScalar(u8, text, '\n');
+    while (lines.next()) |l| paths.append(allocator, l) catch break;
+    if (paths.items.len > 0) app.openDocuments(u, paths.items);
 }
 
 /// Render one frame of an app into a headless window (host previews).

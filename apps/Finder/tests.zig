@@ -252,10 +252,16 @@ test "opening documents without a launch service shows an alert" {
     try std.testing.expect(h.a.alert_len > 0);
     h.key(Key.esc, 0);
     try std.testing.expectEqual(@as(usize, 0), h.a.alert_len);
-    // Images have no editor.
+    // Images open in Preview (launchd is not running in the test, so the
+    // attempt ends in an alert about the launch service).
     h.typeText("photo");
     h.key(Key.enter, 0);
-    try std.testing.expect(std.mem.indexOf(u8, h.a.alert_buf[0..h.a.alert_len], "no application") != null);
+    try std.testing.expect(std.mem.indexOf(u8, h.a.alert_buf[0..h.a.alert_len], "launch service") != null);
+}
+
+test "launchd argument quoting" {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("\"/a b/c\\\"d\"", fs.quoteArg(&buf, "/a b/c\"d"));
 }
 
 test {

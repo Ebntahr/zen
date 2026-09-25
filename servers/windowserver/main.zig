@@ -216,6 +216,31 @@ fn dockSetRunning(s: *st.State, id: []const u8, running: bool) void {
     s.invalidateAll();
 }
 
+/// Bring the frontmost window of process `pid` forward (restoring it when
+/// minimized) and optionally tell it that documents are waiting.
+fn activateApp(s: *st.State, pid: u32, documents: bool) void {
+    var best: ?*wm.Window = null;
+    for (s.manager.order.items) |wid| {
+        const w = s.manager.get(wid) orelse continue;
+        if (w.owner_pid == pid and w.layer == .normal) best = w;
+    }
+    const win = best orelse return;
+    win.minimized = false;
+    win.visible = true;
+    s.manager.raise(win.id);
+    const prev = s.manager.focus(win.id);
+    if (prev != win.id) {
+        if (s.manager.get(prev)) |p| {
+            p.pushEvent(.{ .kind = .focus, .a = 0 });
+            s.invalidate(p.paintBounds());
+        }
+        win.pushEvent(.{ .kind = .focus, .a = 1 });
+    }
+    if (documents) win.pushEvent(.{ .kind = .open_documents });
+    s.invalidate(win.paintBounds());
+    s.invalidate(.{ .w = s.width, .h = wm.MENUBAR });
+}
+
 fn controlHook(s: *st.State, uid: u32, line: []const u8) void {
     var it = std.mem.tokenizeScalar(u8, line, ' ');
     const cmd = it.next() orelse return;
@@ -240,6 +265,10 @@ fn controlHook(s: *st.State, uid: u32, line: []const u8) void {
     } else if (std.mem.eql(u8, cmd, "unlock") and root) {
         s.session = .active;
         s.invalidateAll();
+    } else if ((std.mem.eql(u8, cmd, "app-activate") or std.mem.eql(u8, cmd, "app-open")) and root) {
+        // launchd: a running app was opened again (with documents).
+        const pid = std.fmt.parseInt(u32, it.next() orelse return, 10) catch return;
+        activateApp(s, pid, std.mem.eql(u8, cmd, "app-open"));
     } else if (std.mem.eql(u8, cmd, "app-launched") and root) {
         const pid = std.fmt.parseInt(u32, it.next() orelse return, 10) catch return;
         const id = it.next() orelse return;

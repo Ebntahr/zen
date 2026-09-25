@@ -66,7 +66,8 @@ Zen OS نظام تشغيل حديث مبني على نواة مصغّرة (micro
   مكتوب بـ Zig، ودعم لوحة المفاتيح العربية.
 
 - **التطبيقات**: Finder وTerminal وSettings وTextEdit وCalculator
-  وActivity Monitor وشاشة تسجيل الدخول مع مساعد الإعداد الأولي.
+  وActivity Monitor وPreview (عارض الصور) وشاشة تسجيل الدخول مع مساعد
+  الإعداد الأولي، والأمر `open` من الطرفية.
 
 **الحساب الافتراضي:** المستخدم `zen` وكلمة المرور `zen` (عضو في مجموعة admin).
 
@@ -167,7 +168,7 @@ zig c++ -target riscv64-linux-musl -static examples/cpp/hello.cpp -o hello-cpp
 | virtio drivers, fsd (ext2), ptyd, launchd, init, getty, zauth, cc | ✅ written; build for riscv64 |
 | Fonts (with Arabic shaping), terminal core, ext2 library, graphics and Liquid Glass | ✅ written and tested |
 | Window server (compositor, menu bar, Dock, Spotlight, Control Center), GlassKit toolkit | ✅ written; rendered headless for previews |
-| Apps: Finder, Terminal, Settings, TextEdit, Calculator, Activity Monitor, login window | ✅ written and tested headless |
+| Apps: Finder, Terminal, Settings, TextEdit, Calculator, Activity Monitor, Preview, login window | ✅ written, tested headless and hosted |
 | `zbox` coreutils (107 commands, 588 GNU comparison tests) | ✅ written and tested |
 | `zensh` POSIX shell (job control, line editor, completion; 123 tests incl. riscv64) | ✅ written and tested |
 | **Kernel**: boot entry, paging/VM, traps, scheduler, syscalls, kernel schemes | ❌ **not written**, so the system cannot boot yet |

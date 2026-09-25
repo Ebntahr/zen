@@ -69,7 +69,7 @@ pub const M = struct {
 };
 
 const Sheet = enum { none, open, save, confirm, alert };
-const Pending = enum { none, close, quit, new, open };
+const Pending = enum { none, close, quit, new, open, open_path };
 
 const DirEntry = struct { name: []const u8, is_dir: bool };
 
@@ -102,6 +102,9 @@ pub const App = struct {
 
     sheet: Sheet = .none,
     pending: Pending = .none,
+    /// Document waiting for `.open_path` (after the save question).
+    pending_path: [max_path]u8 = undefined,
+    pending_path_len: usize = 0,
     field: TextState = .{},
     sheet_dir_buf: [max_path]u8 = undefined,
     sheet_dir_len: usize = 0,
@@ -185,6 +188,15 @@ pub const App = struct {
         while (it.next()) |img| img.deinit(self.allocator);
         self.icon_cache.deinit(self.allocator);
         self.arena.deinit();
+    }
+
+    /// Documents opened with TextEdit while it runs (Finder, `open`): the
+    /// first one replaces the current document, after asking to save.
+    pub fn openDocuments(self: *App, u: *Ui, paths: []const []const u8) void {
+        const p = paths[0];
+        self.pending_path_len = @min(p.len, self.pending_path.len);
+        @memcpy(self.pending_path[0..self.pending_path_len], p[0..self.pending_path_len]);
+        self.request(u, .open_path);
     }
 
     /// Open a document named by a path or a `file:` URL (argv[1]).
@@ -286,7 +298,7 @@ pub const App = struct {
 
     /// Run `action`, first asking to save unsaved changes.
     fn request(self: *App, u: *Ui, action: Pending) void {
-        if (self.editor.isDirty() and (action == .close or action == .quit or action == .new or action == .open)) {
+        if (self.editor.isDirty() and (action == .close or action == .quit or action == .new or action == .open or action == .open_path)) {
             self.pending = action;
             self.sheet = .confirm;
             self.needs_redraw = true;
@@ -305,6 +317,12 @@ pub const App = struct {
                 self.path_len = 0;
             },
             .open => self.openFileSheet(u, .open),
+            .open_path => {
+                var copy: [max_path]u8 = undefined;
+                const n = self.pending_path_len;
+                @memcpy(copy[0..n], self.pending_path[0..n]);
+                self.openPathArg(copy[0..n]);
+            },
         }
         self.needs_redraw = true;
     }

@@ -17,6 +17,12 @@
 //!                      write "session-end" (root only)
 //!                      write "quit <bundle-id>"
 //!                      write "verify <path>" → "ok signed <identity>" / "error …"
+//!   launch:inbox       read → documents opened with the (already running)
+//!                      caller, one per line; each is delivered once
+//!
+//! Arguments may be quoted: open com.zen.TextEdit "/Users/zen/My Notes.txt".
+//! Opening a running app activates it and hands it the documents (the
+//! window server sends it an `open_documents` event).
 
 const std = @import("std");
 const abi = @import("abi");
@@ -61,7 +67,62 @@ var running: std.ArrayList(Running) = .empty;
 var session: ?Session = null;
 var trusted: std.ArrayList(Ed25519.PublicKey) = .empty;
 
-const Kind = enum { apps, running, ctl };
+const Kind = enum { apps, running, ctl, inbox };
+
+/// Documents waiting for running apps, by pid.
+const Inbox = struct { pid: u32, docs: std.ArrayList([]u8) = .empty };
+var inboxes: std.ArrayList(Inbox) = .empty;
+
+fn queueDocuments(pid: u32, docs: []const []const u8) void {
+    const box = blk: {
+        for (inboxes.items) |*b| if (b.pid == pid) break :blk b;
+        inboxes.append(gpa, .{ .pid = pid }) catch return;
+        break :blk &inboxes.items[inboxes.items.len - 1];
+    };
+    for (docs) |d| {
+        const copy = gpa.dupe(u8, d) catch continue;
+        box.docs.append(gpa, copy) catch gpa.free(copy);
+    }
+}
+
+/// Take the documents queued for `pid` as "path\n" lines.
+fn takeDocuments(pid: u32, out: *std.ArrayList(u8)) void {
+    for (inboxes.items, 0..) |*b, i| {
+        if (b.pid != pid) continue;
+        for (b.docs.items) |d| {
+            out.appendSlice(gpa, d) catch {};
+            out.append(gpa, '\n') catch {};
+            gpa.free(d);
+        }
+        b.docs.deinit(gpa);
+        _ = inboxes.swapRemove(i);
+        return;
+    }
+}
+
+/// Split a command line into words; "double quotes" group words and
+/// backslash escapes the next character.
+fn splitWords(line: []const u8, words: *std.ArrayList([]const u8), arena: std.mem.Allocator) !void {
+    var i: usize = 0;
+    while (i < line.len) {
+        while (i < line.len and line[i] == ' ') i += 1;
+        if (i >= line.len) break;
+        var word: std.ArrayList(u8) = .empty;
+        var quoted = false;
+        while (i < line.len) : (i += 1) {
+            const ch = line[i];
+            if (ch == '\\' and i + 1 < line.len) {
+                i += 1;
+                try word.append(arena, line[i]);
+            } else if (ch == '"') {
+                quoted = !quoted;
+            } else if (ch == ' ' and !quoted) {
+                break;
+            } else try word.append(arena, ch);
+        }
+        try words.append(arena, word.items);
+    }
+}
 const Handle = struct {
     kind: Kind,
     /// Reply text waiting to be read.
@@ -168,9 +229,16 @@ fn launch(key: []const u8, extra_args: []const []const u8, reply: *std.ArrayList
         try reply.print(gpa, "error no application named {s}\n", .{key});
         return;
     };
-    // Single instance: activate instead of launching twice.
+    // Single instance: activate it (and hand it the documents) instead of
+    // launching twice.
     for (running.items) |r| {
         if (std.mem.eql(u8, r.id, app.id)) {
+            if (extra_args.len > 0) {
+                queueDocuments(r.pid, extra_args);
+                notifyWindowServer("app-open", r.pid, r.id);
+            } else {
+                notifyWindowServer("app-activate", r.pid, r.id);
+            }
             try reply.print(gpa, "ok {d} running\n", .{r.pid});
             return;
         }
@@ -289,6 +357,9 @@ fn reapChildren() void {
             if (app.pid == pid) {
                 zen.sys.logf("launchd: {s} (pid {d}) exited", .{ app.id, pid });
                 notifyWindowServer("app-exited", pid, app.id);
+                var unread: std.ArrayList(u8) = .empty;
+                takeDocuments(pid, &unread);
+                unread.deinit(gpa);
                 _ = running.swapRemove(i);
                 break;
             }
@@ -329,10 +400,10 @@ fn endSession(reply: *std.ArrayList(u8)) !void {
 
 fn command(req: sc.Request, line_raw: []const u8, reply: *std.ArrayList(u8)) !void {
     const line = std.mem.trim(u8, line_raw, " \r\n");
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
     var words: std.ArrayList([]const u8) = .empty;
-    defer words.deinit(gpa);
-    var it = std.mem.tokenizeScalar(u8, line, ' ');
-    while (it.next()) |w| try words.append(gpa, w);
+    try splitWords(line, &words, arena_state.allocator());
     if (words.items.len == 0) return;
     const cmd = words.items[0];
     if (std.mem.eql(u8, cmd, "open")) {
@@ -376,7 +447,7 @@ fn fillListing(h: *Handle) !void {
     switch (h.kind) {
         .apps => for (apps.items) |a| try h.reply.print(gpa, "{s}\t{s}\t{s}\t{s}\t{s}\n", .{ a.id, a.name, a.path, a.icon, a.category }),
         .running => for (running.items) |r| try h.reply.print(gpa, "{d}\t{s}\t{s}\n", .{ r.pid, r.id, r.name }),
-        .ctl => {},
+        .ctl, .inbox => {},
     }
 }
 
@@ -385,10 +456,11 @@ fn serve(in: zen.server.Incoming) !void {
     switch (req.op) {
         .open => {
             const path = std.mem.trim(u8, in.payload, "/");
-            const kind: Kind = if (std.mem.eql(u8, path, "apps")) .apps else if (std.mem.eql(u8, path, "running")) .running else if (path.len == 0 or std.mem.eql(u8, path, "ctl")) .ctl else return srv.replyError(req.id, .NOENT);
+            const kind: Kind = if (std.mem.eql(u8, path, "apps")) .apps else if (std.mem.eql(u8, path, "running")) .running else if (std.mem.eql(u8, path, "inbox")) .inbox else if (path.len == 0 or std.mem.eql(u8, path, "ctl")) .ctl else return srv.replyError(req.id, .NOENT);
             const id = try handles.insert(gpa, .{ .kind = kind });
             const h = handles.get(id).?;
             try fillListing(h);
+            if (kind == .inbox) takeDocuments(req.pid, &h.reply);
             return srv.replyValue(req.id, id);
         },
         .cancel => return,

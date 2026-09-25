@@ -151,6 +151,8 @@ pub const Ui = struct {
     quit: bool = false,
     /// System "Reduce transparency" setting: draw opaque materials.
     reduce_transparency: bool = false,
+    /// Documents were opened with this app (see `app.zig`'s openDocuments).
+    documents_pending: bool = false,
     resized: bool = false,
     cursor: abi.window.Cursor = .arrow,
     last_cursor: abi.window.Cursor = .arrow,
@@ -269,6 +271,7 @@ pub const Ui = struct {
                 .close_request => self.close_requested = true,
                 .quit_request => self.quit_requested = true,
                 .menu => self.menu_id = @intCast(e.a),
+                .open_documents => self.documents_pending = true,
                 .appearance => {
                     self.theme = Theme.get(e.a != 0, .blue);
                     self.theme.accent = @bitCast(e.b);

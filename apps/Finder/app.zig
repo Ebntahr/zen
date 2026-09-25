@@ -334,6 +334,15 @@ pub const App = struct {
         }
     }
 
+    /// Folders opened with Finder while it runs (`open ~/Documents`).
+    pub fn openDocuments(self: *App, u: *Ui, paths: []const []const u8) void {
+        var sb: [fs.max_path]u8 = undefined;
+        const r = fs.resolve(&sb, paths[0], self.loc(), self.home) orelse return;
+        var copy: [fs.max_path]u8 = undefined;
+        @memcpy(copy[0..r.len], r);
+        self.navigate(u, copy[0..r.len], true);
+    }
+
     fn navigate(self: *App, u: *Ui, target: []const u8, record: bool) void {
         if (std.mem.eql(u8, target, self.loc())) return;
         if (record) {
@@ -422,7 +431,9 @@ pub const App = struct {
             .app => self.launchApp(full, e.display),
             .file, .exec, .link, .other => {
                 if (fs.isTextLike(e)) {
-                    self.openInTextEdit(full, e.display);
+                    self.openWith("com.zen.TextEdit", full, e.display);
+                } else if (fs.isViewableImage(e)) {
+                    self.openWith("com.zen.Preview", full, e.display);
                 } else {
                     self.setAlert("There is no application set to open the document \u{201C}{s}\u{201D}.", .{e.display});
                 }
@@ -431,20 +442,9 @@ pub const App = struct {
     }
 
     fn launchApp(self: *App, full: []const u8, name: []const u8) void {
-        var cmd: [fs.max_path + 16]u8 = undefined;
-        var key: []const u8 = full;
-        var id_buf: [128]u8 = undefined;
-        if (std.mem.indexOfScalar(u8, full, ' ') != null) {
-            // launchd splits its command on spaces: use the bundle id instead.
-            if (zen.bundle.load(self.allocator, full)) |b| {
-                var bb = b;
-                defer bb.deinit();
-                const n = @min(b.info.id.len, id_buf.len);
-                @memcpy(id_buf[0..n], b.info.id[0..n]);
-                key = id_buf[0..n];
-            } else |_| {}
-        }
-        const line = std.fmt.bufPrint(&cmd, "open {s}\n", .{key}) catch return;
+        var cmd: [fs.max_path * 2 + 16]u8 = undefined;
+        var qb: [fs.max_path * 2 + 2]u8 = undefined;
+        const line = std.fmt.bufPrint(&cmd, "open {s}\n", .{fs.quoteArg(&qb, full)}) catch return;
         var reply_buf: [512]u8 = undefined;
         const reply = fs.launchCtl(line, &reply_buf) catch |err| {
             self.setAlert("\u{201C}{s}\u{201D} can\u{2019}t be opened: the launch service is not available ({s}).", .{ name, @errorName(err) });
@@ -455,17 +455,12 @@ pub const App = struct {
         self.setAlert("\u{201C}{s}\u{201D} can\u{2019}t be opened: {s}.", .{ name, msg });
     }
 
-    fn openInTextEdit(self: *App, full: []const u8, name: []const u8) void {
-        // launchd splits its command on spaces, so a path containing one
-        // travels as a percent-encoded file: URL (TextEdit decodes it).
-        var enc: [fs.max_path * 3]u8 = undefined;
-        var cmd: [fs.max_path * 3 + 48]u8 = undefined;
+    /// Open a document with the app `app_id` (quoted, so any path works).
+    fn openWith(self: *App, app_id: []const u8, full: []const u8, name: []const u8) void {
+        var qb: [fs.max_path * 2 + 2]u8 = undefined;
+        var cmd: [fs.max_path * 2 + 64]u8 = undefined;
         const arg_is_url = fs.isUrl(full);
-        const needs_url = !arg_is_url and std.mem.indexOfAny(u8, full, " \t%") != null;
-        const line = if (needs_url)
-            std.fmt.bufPrint(&cmd, "open com.zen.TextEdit file:{s}\n", .{zen.url.encode(full, &enc)}) catch return
-        else
-            std.fmt.bufPrint(&cmd, "open com.zen.TextEdit {s}\n", .{full}) catch return;
+        const line = std.fmt.bufPrint(&cmd, "open {s} {s}\n", .{ app_id, fs.quoteArg(&qb, full) }) catch return;
         var reply_buf: [512]u8 = undefined;
         const reply = fs.launchCtl(line, &reply_buf) catch |err| {
             self.setAlert("\u{201C}{s}\u{201D} can\u{2019}t be opened: the launch service is not available ({s}).", .{ name, @errorName(err) });

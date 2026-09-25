@@ -181,6 +181,9 @@ pub const EventKind = enum(u32) {
     appearance = 14,
     /// a = 1 visible / 0 hidden or minimized.
     visibility = 15,
+    /// Documents were opened with this (running) app: read them, one per
+    /// line, from `launch:inbox`.
+    open_documents = 16,
     _,
 };
 
