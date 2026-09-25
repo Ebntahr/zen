@@ -34,6 +34,11 @@ pub const Input = struct {
     /// Resize event owed to the dragged window (sent once per frame).
     pending_resize: u32 = 0,
     shape: proto.Cursor = .arrow,
+    /// Press in the title area of a full-size-content window: becomes a
+    /// window move once the pointer travels a few pixels.
+    pending_move: u32 = 0,
+    press_x: i32 = 0,
+    press_y: i32 = 0,
 
     fn s(self: *Input) *st.State {
         return self.state;
@@ -104,6 +109,19 @@ pub const Input = struct {
             control.drag(state, mx, my);
             self.updateCursor(.arrow);
             return;
+        }
+        if (self.pending_move != 0 and state.mouse.buttons & 1 != 0) {
+            const dx = mx - self.press_x;
+            const dy = my - self.press_y;
+            if (dx * dx + dy * dy > 16) {
+                if (state.manager.get(self.pending_move)) |win| {
+                    state.manager.beginDrag(win, .move, .{}, self.press_x, self.press_y);
+                    // The app should not treat this as a click.
+                    event(win, .mouse_up, state.keys.mods(), -10000, -10000, 1, 0);
+                    state.mouse.grab_window = 0;
+                }
+                self.pending_move = 0;
+            }
         }
         if (state.manager.drag.kind != .none) {
             if (state.manager.updateDrag(mx, my)) |r| {
@@ -280,6 +298,13 @@ pub const Input = struct {
             .content => |c| {
                 // Full-size-content windows: a press in the title area drags.
                 if (!win.hasTitlebar() and win.hasControls() and c.y < win.title_height and button == 1 and state.keys.mods() & proto.Mods.cmd == 0) {
+                    if (state.mouse.click_count == 2 and win.resizable()) {
+                        self.zoom(win);
+                        return;
+                    }
+                    self.pending_move = win.id;
+                    self.press_x = mx;
+                    self.press_y = my;
                     event(win, .mouse_down, state.keys.mods(), c.x, c.y, button, state.mouse.click_count);
                     state.mouse.grab_window = win.id;
                     return;
@@ -293,6 +318,7 @@ pub const Input = struct {
 
     fn buttonUp(self: *Input, button: i32) void {
         const state = self.s();
+        self.pending_move = 0;
         state.mouse.buttons &= ~(@as(u32, 1) << @intCast(button - 1));
         if (state.manager.drag.kind != .none) {
             const was_move = state.manager.drag.kind == .move;
