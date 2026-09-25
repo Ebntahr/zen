@@ -510,9 +510,20 @@ pub const Input = struct {
             if (spotlight.key(state, code, tbuf[0..tlen], value)) |id| self.activateOrLaunch(id);
             return;
         }
+        // Keyboard layout toggle: pressing Alt and Shift together (the
+        // second of the two goes down while the first is held).
+        if (value == 1 and is_mod and !state.keys.meta and !state.keys.ctrl) {
+            const shift_key = code == Key.leftshift or code == Key.rightshift;
+            const alt_key = code == Key.leftalt or code == Key.rightalt;
+            if ((shift_key and state.keys.alt) or (alt_key and state.keys.shift)) {
+                state.keys.arabic = !state.keys.arabic;
+                state.invalidate(.{ .w = state.width, .h = wm.MENUBAR });
+                return;
+            }
+        }
         if (pressed and !is_mod) {
-            // Keyboard layout toggle: Alt+Shift or Ctrl+Space.
-            if ((state.keys.alt and state.keys.shift and !state.keys.meta) or (state.keys.ctrl and code == Key.space and !state.keys.meta)) {
+            // Keyboard layout toggle: Ctrl+Space.
+            if (state.keys.ctrl and code == Key.space and !state.keys.meta) {
                 if (value == 1) {
                     state.keys.arabic = !state.keys.arabic;
                     state.invalidate(.{ .w = state.width, .h = wm.MENUBAR });

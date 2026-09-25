@@ -318,7 +318,8 @@ pub fn build(b: *std.Build) void {
     const hosted_files = b.allocator.create(std.Build.Step) catch @panic("oom");
     hosted_files.* = std.Build.Step.init(.{ .id = .custom, .name = "hosted system root", .owner = b });
     const hosted_mods = makeModules(b, hosted_target, .ReleaseFast);
-    addSystem(b, hosted_files, hosted_mods, hosted_target, .ReleaseFast, .{ .prefix = "hosted/root", .hosted = true, .skip = skip });
+    const hosted_toolchain = b.option([]const u8, "hosted-toolchain", "Zig installation to copy into the hosted root as /usr/lib/zig (for Docker)");
+    addSystem(b, hosted_files, hosted_mods, hosted_target, .ReleaseFast, .{ .prefix = "hosted/root", .hosted = true, .skip = skip, .toolchain = hosted_toolchain });
     const hosted_root = b.getInstallPath(.{ .custom = "hosted/root" }, "");
     const hprep = b.addRunArtifact(mkimage);
     hprep.has_side_effects = true;
@@ -343,6 +344,10 @@ pub fn build(b: *std.Build) void {
     hosted_step.dependOn(&b.addInstallFile(b.path("hosted/Dockerfile"), "hosted/Dockerfile").step);
     if (host_target.result.os.tag == .linux) {
         const launcher = makeExe(b, host_mods, "zen-hosted", "tools/zen-hosted.zig", &.{}, host_target, .ReleaseFast);
+        // The Zig running this build doubles as Zen's cc/c++ when hosted.
+        const launcher_opts = b.addOptions();
+        launcher_opts.addOption([]const u8, "zig_dir", std.fs.path.dirname(b.graph.zig_exe) orelse "/usr/lib/zig");
+        launcher.root_module.addOptions("options", launcher_opts);
         hosted_step.dependOn(&b.addInstallArtifact(launcher, .{ .dest_dir = .{ .override = .{ .custom = "hosted" } } }).step);
         const run_hosted = b.step("run-hosted", "Build and run hosted Zen, then open http://127.0.0.1:6080");
         const run = b.addRunArtifact(launcher);

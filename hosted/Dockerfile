@@ -4,7 +4,7 @@
 #
 #   zig build hosted                       # (add -Dhosted-arch=aarch64 on Apple Silicon)
 #   docker build -t zen-os zig-out/hosted
-#   docker run --rm -p 127.0.0.1:6080:6080 -p 127.0.0.1:5900:5900 zen-os
+#   docker run --rm --hostname zen-os -p 127.0.0.1:6080:6080 -p 127.0.0.1:5900:5900 zen-os
 #   open http://localhost:6080             # user "zen", password "zen"
 #
 # Every Zen program is a static executable, so the image needs nothing else.

@@ -2,16 +2,18 @@
 //! clang++, ar, ranlib, ld, zig-toolchain).
 //!
 //! Zen ships the Zig toolchain (which contains clang, lld and musl/libc++
-//! sources) under /usr/lib/zig. Because Zen implements the Linux riscv64
-//! ABI, programs are built for `riscv64-linux-musl` and run natively:
+//! sources) under /usr/lib/zig. Because Zen implements the Linux ABI,
+//! programs are built for `<cpu>-linux-musl` (riscv64 on Zen, the host's
+//! CPU when Zen runs hosted) and run natively:
 //!
 //!     cc hello.c -o hello && ./hello
 //!     c++ -O2 -std=c++20 app.cpp -o app
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zig_exe = "/usr/lib/zig/zig";
-const target = "riscv64-linux-musl";
+const target = @tagName(builtin.cpu.arch) ++ "-linux-musl";
 
 pub fn main() !void {
     var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);

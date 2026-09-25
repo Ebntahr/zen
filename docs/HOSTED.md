@@ -29,7 +29,7 @@ zig build run-hosted          # على Linux
 ```sh
 zig build hosted
 docker build -t zen-os zig-out/hosted
-docker run --rm -p 127.0.0.1:6080:6080 -p 127.0.0.1:5900:5900 zen-os
+docker run --rm --hostname zen-os -p 127.0.0.1:6080:6080 -p 127.0.0.1:5900:5900 zen-os
 ```
 
 الاختصارات: زر "Ctrl ⇄ ⌘" في الشريط العلوي يجعل Ctrl يعمل كمفتاح ⌘ (مثل
@@ -64,7 +64,7 @@ Ctrl-C shuts Zen down cleanly.
 ```sh
 zig build hosted                 # on Apple Silicon: zig build hosted -Dhosted-arch=aarch64
 docker build -t zen-os zig-out/hosted
-docker run --rm -p 127.0.0.1:6080:6080 -p 127.0.0.1:5900:5900 zen-os
+docker run --rm --hostname zen-os -p 127.0.0.1:6080:6080 -p 127.0.0.1:5900:5900 zen-os
 ```
 
 The image is `FROM scratch`: Zen's programs are static executables and need
@@ -82,6 +82,15 @@ nothing else.
 - **Clipboard.** Pasting into Zen with ⌘V (Ctrl+V) uses the text on your
   computer's clipboard. Text copied inside Zen is offered to the browser's
   clipboard.
+- **Arabic keyboard.** Press Alt+Shift, or use Control Center, to switch
+  layouts. The menu bar shows EN or ع.
+- **C and C++.** `zen-hosted` makes the Zig toolchain that built Zen
+  available as `/usr/lib/zig`, so `cc hello.c -o hello && ./hello` and
+  `c++ -std=c++20 app.cpp -o app` work in Terminal. The examples are in
+  `/usr/share/zen/examples`. The first C++ build compiles libc++ once
+  (a few minutes); later builds are fast. For Docker, build with
+  `-Dhosted-toolchain=$(dirname $(which zig))` to copy the toolchain
+  into the image.
 - **Fit** scales the screen to the window. **⛶** switches to full screen.
 - **Log out, restart, shut down.** These work as on Zen. Shut Down stops the
   hosted system.

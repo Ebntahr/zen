@@ -9,6 +9,7 @@
 //! Ctrl-C shuts Zen down.
 
 const std = @import("std");
+const options = @import("options");
 const linux = std.os.linux;
 const posix = std.posix;
 
@@ -42,6 +43,8 @@ const usage =
     \\  --http PORT   web client port (default 6080)
     \\  --vnc PORT    VNC port, 0 to disable (default 5900)
     \\  --bind ADDR   listen address (default 127.0.0.1)
+    \\  --toolchain DIR  Zig installation to use as /usr/lib/zig (cc, c++);
+    \\                   default: the Zig that built Zen, if present
     \\
 ;
 
@@ -51,6 +54,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(a);
 
     var root: ?[]const u8 = null;
+    var toolchain: ?[]const u8 = null;
     var env = std.StringArrayHashMap([]const u8).init(a);
     try env.put("ZEN_HOSTED_SIZE", "1280x800");
     try env.put("ZEN_HOSTED_HTTP", "6080");
@@ -66,7 +70,7 @@ pub fn main() !void {
         if (i + 1 >= args.len) die("{s} needs a value\n{s}", .{ opt, usage });
         const val = args[i + 1];
         i += 1;
-        if (std.mem.eql(u8, opt, "--root")) root = val else if (std.mem.eql(u8, opt, "--size")) try env.put("ZEN_HOSTED_SIZE", val) else if (std.mem.eql(u8, opt, "--http")) try env.put("ZEN_HOSTED_HTTP", val) else if (std.mem.eql(u8, opt, "--vnc")) try env.put("ZEN_HOSTED_VNC", val) else if (std.mem.eql(u8, opt, "--bind")) try env.put("ZEN_HOSTED_BIND", val) else die("unknown option {s}\n{s}", .{ opt, usage });
+        if (std.mem.eql(u8, opt, "--root")) root = val else if (std.mem.eql(u8, opt, "--toolchain")) toolchain = val else if (std.mem.eql(u8, opt, "--size")) try env.put("ZEN_HOSTED_SIZE", val) else if (std.mem.eql(u8, opt, "--http")) try env.put("ZEN_HOSTED_HTTP", val) else if (std.mem.eql(u8, opt, "--vnc")) try env.put("ZEN_HOSTED_VNC", val) else if (std.mem.eql(u8, opt, "--bind")) try env.put("ZEN_HOSTED_BIND", val) else die("unknown option {s}\n{s}", .{ opt, usage });
     }
     const root_path = root orelse blk: {
         const self_dir = try std.fs.selfExeDirPathAlloc(a);
@@ -83,7 +87,7 @@ pub fn main() !void {
         if (linux.E.init(rc) != .SUCCESS) die(
             \\cannot create a user namespace ({s}).
             \\  Some systems (e.g. Ubuntu 24.04) restrict them. Run with sudo, or use Docker:
-            \\    docker build -t zen-os zig-out/hosted && docker run --rm -p 127.0.0.1:6080:6080 zen-os
+            \\    docker build -t zen-os zig-out/hosted && docker run --rm --hostname zen-os -p 127.0.0.1:6080:6080 zen-os
         , .{@tagName(linux.E.init(rc))});
         _ = writeFile("/proc/self/setgroups", "deny");
         var buf: [64]u8 = undefined;
@@ -108,6 +112,22 @@ pub fn main() !void {
     const rootz = try a.dupeZ(u8, root_abs);
     bindMount("/dev", try std.fmt.allocPrintSentinel(a, "{s}/dev", .{root_abs}, 0));
     bindMount("/proc", try std.fmt.allocPrintSentinel(a, "{s}/proc", .{root_abs}, 0));
+    // The C/C++ toolchain (cc, c++): a Zig installation at /usr/lib/zig,
+    // unless the system root already contains one.
+    const zig_in_root = try std.fs.path.join(a, &.{ root_abs, "usr/lib/zig/zig" });
+    const have_zig = if (std.fs.cwd().access(zig_in_root, .{})) true else |_| false;
+    if (!have_zig) {
+        const tc = toolchain orelse options.zig_dir;
+        const tc_zig = try std.fs.path.join(a, &.{ tc, "zig" });
+        if (std.fs.cwd().access(tc_zig, .{})) {
+            const tcz = try a.dupeZ(u8, tc);
+            const dst = try std.fmt.allocPrintSentinel(a, "{s}/usr/lib/zig", .{root_abs}, 0);
+            std.fs.cwd().makePath(dst) catch {};
+            if (linux.E.init(linux.mount(tcz, dst, null, linux.MS.BIND | linux.MS.REC, 0)) == .SUCCESS) {
+                _ = linux.mount("none", dst, null, linux.MS.BIND | linux.MS.REMOUNT | linux.MS.RDONLY | linux.MS.REC, 0);
+            }
+        } else |_| if (toolchain != null) die("no zig executable in {s}", .{tc});
+    }
     check(linux.chroot(rootz), "chroot");
     check(linux.chdir("/"), "chdir");
     std.fs.cwd().makePath("run/zen") catch {};
