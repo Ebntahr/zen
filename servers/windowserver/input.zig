@@ -295,7 +295,13 @@ pub const Input = struct {
         const state = self.s();
         state.mouse.buttons &= ~(@as(u32, 1) << @intCast(button - 1));
         if (state.manager.drag.kind != .none) {
+            const was_move = state.manager.drag.kind == .move;
+            const wid = state.manager.drag.window;
             state.manager.endDrag();
+            // Window tiling: drop at the left/right edge or the top.
+            if (was_move) {
+                if (state.manager.get(wid)) |win| self.tile(win, state.mouse.x, state.mouse.y);
+            }
             self.flushResize();
             return;
         }
@@ -323,6 +329,29 @@ pub const Input = struct {
         state.manager.toggleZoom(win);
         protocol.Protocol.resizeBuffer(win);
         event(win, .resize, 0, win.content.w, win.content.h, 0, 0);
+        state.invalidate(win.paintBounds());
+    }
+
+    fn tile(self: *Input, win: *wm.Window, mx: i32, my: i32) void {
+        const state = self.s();
+        if (!win.resizable()) return;
+        const wa = state.manager.workArea().inflate(-6);
+        const tb: i32 = if (win.hasTitlebar()) wm.TITLEBAR else 0;
+        const half = @divTrunc(wa.w - 6, 2);
+        var target: ?wm.Rect = null;
+        if (mx <= 2) {
+            target = .{ .x = wa.x, .y = wa.y, .w = half, .h = wa.h };
+        } else if (mx >= state.width - 3) {
+            target = .{ .x = wa.x + half + 6, .y = wa.y, .w = half, .h = wa.h };
+        } else if (my <= wm.MENUBAR) {
+            target = wa;
+        }
+        const t = target orelse return;
+        state.invalidate(win.paintBounds());
+        if (!win.zoomed) win.restore = win.content;
+        win.content = .{ .x = t.x, .y = t.y + tb, .w = t.w, .h = t.h - tb };
+        win.zoomed = true;
+        self.pending_resize = win.id;
         state.invalidate(win.paintBounds());
     }
 
