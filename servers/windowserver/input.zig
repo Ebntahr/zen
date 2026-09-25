@@ -7,6 +7,7 @@ const st = @import("state.zig");
 const chrome = @import("chrome.zig");
 const protocol = @import("protocol.zig");
 const spotlight = @import("spotlight.zig");
+const control = @import("control.zig");
 
 const inp = abi.input;
 const proto = abi.window;
@@ -97,6 +98,11 @@ pub const Input = struct {
         const my = state.mouse.y;
         var shape: proto.Cursor = .arrow;
 
+        if (control.open and state.mouse.buttons != 0 and control.rect(state).contains(mx, my)) {
+            control.drag(state, mx, my);
+            self.updateCursor(.arrow);
+            return;
+        }
         if (state.manager.drag.kind != .none) {
             if (state.manager.updateDrag(mx, my)) |r| {
                 state.invalidate(r.old_bounds);
@@ -204,6 +210,37 @@ pub const Input = struct {
         }
 
         if (state.session == .active) {
+            if (control.open) {
+                if (control.rect(state).contains(mx, my)) {
+                    switch (control.press(state, mx, my)) {
+                        .dark_mode => {
+                            state.appearance.dark = !state.appearance.dark;
+                            chrome.broadcastAppearance(state);
+                        },
+                        .keyboard => {
+                            state.keys.arabic = !state.keys.arabic;
+                            state.invalidate(.{ .w = state.width, .h = wm.MENUBAR });
+                        },
+                        .settings => {
+                            control.close(state);
+                            self.actions.launch(state, "com.zen.Settings");
+                        },
+                        .lock => {
+                            control.close(state);
+                            self.actions.session(state, "lock");
+                        },
+                        .none => {},
+                    }
+                    return;
+                }
+                control.close(state);
+                if (control.triggerRect(state).contains(mx, my)) return;
+            }
+            if (control.triggerRect(state).contains(mx, my)) {
+                self.closePopups(0);
+                control.toggle(state);
+                return;
+            }
             if (chrome.menubarContains(state, mx, my)) {
                 self.closePopups(0);
                 chrome.menubarClick(state, mx, my);

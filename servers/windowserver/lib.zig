@@ -6,3 +6,4 @@ pub const chrome = @import("chrome.zig");
 pub const protocol = @import("protocol.zig");
 pub const cursor = @import("cursor.zig");
 pub const spotlight = @import("spotlight.zig");
+pub const control = @import("control.zig");

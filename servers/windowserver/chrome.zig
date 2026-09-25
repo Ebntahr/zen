@@ -11,6 +11,7 @@ const wm = @import("wm.zig");
 const st = @import("state.zig");
 const comp_mod = @import("compositor.zig");
 const spotlight = @import("spotlight.zig");
+const control = @import("control.zig");
 
 const Canvas = gfx.Canvas;
 const Color = gfx.Color;
@@ -207,6 +208,7 @@ pub fn menuPanelContains(state: *const st.State, x: i32, y: i32) bool {
 
 pub fn overChrome(state: *const st.State, x: i32, y: i32) bool {
     if (!session(state)) return false;
+    if (control.open and control.rect(state).contains(x, y)) return true;
     if (y < wm.MENUBAR) return true;
     if (layout.dock.contains(x, y)) return true;
     if (state.menu.index >= 0 and layout.panel.contains(x, y)) return true;
@@ -410,6 +412,7 @@ pub fn expandDirty(state: *const st.State, d: Rect) Rect {
         if (state.menu.index >= 0) layout.panel.inset(-4, -4) else Rect.init(0, 0, 0, 0),
         if (state.switcher.active) switcherRect(state).inset(-4, -4) else Rect.init(0, 0, 0, 0),
         if (state.spotlight.active) spotlight.bounds(state).inset(-4, -4) else Rect.init(0, 0, 0, 0),
+        if (control.open) control.rect(state).inset(-4, -4) else Rect.init(0, 0, 0, 0),
     };
     var changed = true;
     while (changed) {
@@ -705,4 +708,5 @@ pub fn draw(c: *Compositor, state: *st.State, dirty: Rect) void {
     drawMenuPanel(c, state, dirty);
     drawSwitcher(c, state, dirty);
     spotlight.draw(c, state, dirty);
+    control.draw(c, state, dirty);
 }

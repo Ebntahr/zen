@@ -72,6 +72,7 @@ pub fn main() !void {
         @memcpy(state.spotlight.query[0..2], "te");
         state.spotlight.query_len = 2;
     }
+    if (args.len > 3 and std.mem.eql(u8, args[3], "control")) ws.control.open = true;
     state.mouse = .{ .x = 700, .y = 740 };
     ws.chrome.dockHover(&state, 700, 740);
     _ = comp.compose(&state, gfx.Rect.init(0, 0, W, H));
