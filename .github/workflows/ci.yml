@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Unit tests
+        run: zig build test --summary all
+      - name: Build user space (riscv64)
+        run: zig build
+      - name: Build disk image
+        run: zig build image -Ddisk-size=512
+      - name: Render desktop previews
+        run: zig build previews
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zen-previews
+          path: zig-out/previews/
