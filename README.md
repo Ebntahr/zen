@@ -158,7 +158,7 @@ zig c++ -target riscv64-linux-musl -static examples/cpp/hello.cpp -o hello-cpp
 | Window server (compositor, menu bar, Dock, Spotlight, Control Center), GlassKit toolkit | ✅ written; rendered headless for previews |
 | Apps: Finder, Terminal, Settings, TextEdit, Calculator, Activity Monitor, login window | ✅ written and tested headless |
 | `zbox` coreutils (107 commands, 588 GNU comparison tests) | ✅ written and tested |
-| `zensh` POSIX shell | 🔄 being finished |
+| `zensh` POSIX shell (job control, line editor, completion; 123 tests incl. riscv64) | ✅ written and tested |
 | **Kernel**: boot entry, paging/VM, traps, scheduler, syscalls, kernel schemes | ❌ **not written**, so the system cannot boot yet |
 
 Done in the kernel so far: the linker script, CSR/SBI helpers, UART console,
