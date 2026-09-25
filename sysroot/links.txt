@@ -1,0 +1,21 @@
+# Symbolic links created in the system image: <path> <target>
+/bin                  usr/bin
+/sbin/getty           ../usr/sbin/getty
+/usr/bin/sh           zensh
+/usr/bin/login        zauth
+/usr/bin/su           zauth
+/usr/bin/sudo         zauth
+/usr/bin/passwd       zauth
+/usr/sbin/useradd     ../bin/zauth
+/usr/sbin/userdel     ../bin/zauth
+/usr/bin/c++          cc
+/usr/bin/gcc          cc
+/usr/bin/g++          cc
+/usr/bin/clang        cc
+/usr/bin/clang++      cc
+/usr/bin/ar           cc
+/usr/bin/ranlib       cc
+/usr/bin/ld           cc
+/usr/bin/zig          ../lib/zig/zig
+/home                 Users
+/lib                  usr/lib
