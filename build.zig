@@ -20,6 +20,7 @@ const libs = [_]Lib{
     .{ .name = "zen", .path = "lib/zen/root.zig", .deps = &.{"abi"} },
     .{ .name = "virtio", .path = "lib/virtio/root.zig", .deps = &.{"zen"} },
     .{ .name = "font", .path = "lib/font/root.zig" },
+    .{ .name = "vt", .path = "lib/vt/root.zig" },
 };
 
 const Program = struct {
@@ -50,6 +51,7 @@ const tests = [_]Lib{
     .{ .name = "ldisc", .path = "servers/ptyd/ldisc.zig" },
     .{ .name = "wm", .path = "servers/windowserver/wm.zig", .deps = &.{"abi"} },
     .{ .name = "font", .path = "lib/font/root.zig" },
+    .{ .name = "vt", .path = "lib/vt/root.zig" },
 };
 
 fn makeModules(
