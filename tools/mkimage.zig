@@ -2,7 +2,8 @@
 //! ext2 disk image.
 //!
 //!   mkimage --root <dir> --keydir <dir> [--manifest file] [--links file]
-//!           [--commands file:target-dir:binary] [--user name:password]...
+//!           [--commands <list-file> --commands-into <dir>:<binary>]
+//!           [--user name:password]...
 //!
 //! Steps: write /etc/shadow, create symlinks, create manifest directories,
 //! generate the platform signing key on first use, sign every .app bundle
@@ -71,13 +72,19 @@ pub fn main() !void {
     var links: ?[]const u8 = null;
     var users: std.ArrayList([]const u8) = .empty;
     var commands: std.ArrayList([]const u8) = .empty;
+    var command_list: ?[]const u8 = null;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         const opt = args[i];
         if (i + 1 >= args.len) fatal("missing value for {s}", .{opt});
         i += 1;
         const val = args[i];
-        if (std.mem.eql(u8, opt, "--root")) root_path = val else if (std.mem.eql(u8, opt, "--keydir")) keydir = val else if (std.mem.eql(u8, opt, "--manifest")) manifest = val else if (std.mem.eql(u8, opt, "--links")) links = val else if (std.mem.eql(u8, opt, "--user")) try users.append(a, val) else if (std.mem.eql(u8, opt, "--commands")) try commands.append(a, val) else fatal("unknown option {s}", .{opt});
+        if (std.mem.eql(u8, opt, "--root")) root_path = val else if (std.mem.eql(u8, opt, "--keydir")) keydir = val else if (std.mem.eql(u8, opt, "--manifest")) manifest = val else if (std.mem.eql(u8, opt, "--links")) links = val else if (std.mem.eql(u8, opt, "--user")) try users.append(a, val) else if (std.mem.eql(u8, opt, "--commands")) {
+            command_list = val;
+        } else if (std.mem.eql(u8, opt, "--commands-into")) {
+            const list = command_list orelse fatal("--commands-into needs --commands first", .{});
+            try commands.append(a, try std.fmt.allocPrint(a, "{s}:{s}", .{ list, val }));
+        } else fatal("unknown option {s}", .{opt});
     }
     const rp = root_path orelse fatal("--root is required", .{});
     var root = try std.fs.cwd().makeOpenPath(rp, .{ .iterate = true });

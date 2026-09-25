@@ -10,3 +10,4 @@ zig-out/
 /legacy/run/zen.iso
 /legacy/run/iso/boot/zen
 /legacy/run/iso/servers/*
+keys/
