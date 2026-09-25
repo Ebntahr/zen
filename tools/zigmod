@@ -1,0 +1,33 @@
+#!/bin/sh
+# Build/run/test a Zig root file with every Zen library module available.
+#
+#   tools/zigmod run   apps/Calculator/preview.zig -- /tmp/calc.png
+#   tools/zigmod test  apps/Calculator/app.zig
+#   tools/zigmod build-exe apps/Calculator/main.zig -target riscv64-linux-none -O ReleaseSmall
+#
+# Extra flags after the root file apply to the root module (e.g. -target,
+# -O); library modules use the same target/optimize.
+set -e
+cmd=$1; root=$2; shift 2
+flags=""
+rest=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --) rest="$*"; break ;;
+    -target|-O|-mcpu) flags="$flags $1 $2"; shift 2 ;;
+    *) flags="$flags $1"; shift ;;
+  esac
+done
+L=lib
+exec zig $cmd $flags \
+  --dep abi --dep zen --dep gfx --dep font --dep ui --dep icons --dep vt --dep ext2 --dep virtio -Mroot=$root \
+  $flags -Mabi=$L/abi/root.zig \
+  $flags --dep abi -Mzen=$L/zen/root.zig \
+  $flags -Mgfx=$L/gfx/root.zig \
+  $flags -Mfont=$L/font/root.zig \
+  $flags --dep gfx --dep font --dep abi --dep zen -Mui=$L/ui/root.zig \
+  $flags --dep gfx -Micons=$L/icons/root.zig \
+  $flags -Mvt=$L/vt/root.zig \
+  $flags -Mext2=$L/ext2/root.zig \
+  $flags --dep zen -Mvirtio=$L/virtio/root.zig \
+  $rest

@@ -40,6 +40,7 @@ const programs = [_]Program{
     .{ .name = "init", .path = "servers/init/main.zig", .deps = &.{ "abi", "zen" }, .dir = "sbin" },
     .{ .name = "getty", .path = "userland/getty/main.zig", .deps = &.{"zen"}, .dir = "usr/sbin" },
     .{ .name = "windowserver", .path = "servers/windowserver/main.zig", .deps = &.{ "abi", "zen", "gfx", "ui", "icons", "font" }, .dir = "System/Library/Servers" },
+    .{ .name = "loginwindow", .path = "apps/loginwindow/main.zig", .deps = &.{ "abi", "zen", "gfx", "ui", "icons" }, .dir = "System/Library/CoreServices" },
     .{ .name = "fsd", .path = "servers/fsd/main.zig", .deps = &.{ "abi", "zen", "ext2" }, .dir = "System/Library/Servers" },
     .{ .name = "ptyd", .path = "servers/ptyd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers" },
     .{ .name = "virtio-blkd", .path = "drivers/virtio-blk/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },

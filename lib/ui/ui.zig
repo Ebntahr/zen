@@ -575,6 +575,8 @@ pub const Ui = struct {
         size: f32 = 13,
         /// Rounded "search"/glass look.
         capsule: bool = false,
+        /// No background, border or focus ring (field drawn over glass).
+        plain: bool = false,
     };
 
     /// Single-line text field with selection, clipboard and scrolling.
@@ -619,9 +621,11 @@ pub const Ui = struct {
 
         const t = self.theme;
         const radius: f32 = if (o.capsule) @as(f32, @floatFromInt(r.h)) / 2 else 7;
-        if (has_focus) shapes.fillRoundRect(self.canvas, Rect.init(r.x - 3, r.y - 3, r.w + 6, r.h + 6), radius + 3, pm(withAlpha(t.accent, 110)));
-        self.fillRound(r, radius, t.field_bg);
-        self.strokeRound(r, radius, 0.75, t.control_border);
+        if (!o.plain) {
+            if (has_focus) shapes.fillRoundRect(self.canvas, Rect.init(r.x - 3, r.y - 3, r.w + 6, r.h + 6), radius + 3, pm(withAlpha(t.accent, 110)));
+            self.fillRound(r, radius, t.field_bg);
+            self.strokeRound(r, radius, 0.75, t.control_border);
+        }
 
         // Keep the caret visible.
         const shown2 = displayText(st, o.secure, &display_buf);
