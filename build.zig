@@ -21,6 +21,7 @@ const libs = [_]Lib{
     .{ .name = "virtio", .path = "lib/virtio/root.zig", .deps = &.{"zen"} },
     .{ .name = "font", .path = "lib/font/root.zig" },
     .{ .name = "vt", .path = "lib/vt/root.zig" },
+    .{ .name = "ext2", .path = "lib/ext2/root.zig" },
 };
 
 const Program = struct {
@@ -35,6 +36,7 @@ const Program = struct {
 const programs = [_]Program{
     .{ .name = "init", .path = "servers/init/main.zig", .deps = &.{ "abi", "zen" }, .dir = "sbin" },
     .{ .name = "getty", .path = "userland/getty/main.zig", .deps = &.{"zen"}, .dir = "usr/sbin" },
+    .{ .name = "fsd", .path = "servers/fsd/main.zig", .deps = &.{ "abi", "zen", "ext2" }, .dir = "System/Library/Servers" },
     .{ .name = "ptyd", .path = "servers/ptyd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers" },
     .{ .name = "virtio-blkd", .path = "drivers/virtio-blk/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },
     .{ .name = "virtio-gpud", .path = "drivers/virtio-gpu/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },
@@ -52,6 +54,7 @@ const tests = [_]Lib{
     .{ .name = "wm", .path = "servers/windowserver/wm.zig", .deps = &.{"abi"} },
     .{ .name = "font", .path = "lib/font/root.zig" },
     .{ .name = "vt", .path = "lib/vt/root.zig" },
+    .{ .name = "fsd", .path = "servers/fsd/service.zig", .deps = &.{ "abi", "ext2" } },
 };
 
 fn makeModules(
