@@ -174,6 +174,9 @@ pub const Shell = struct {
     frames: std.ArrayList(Frame) = .empty,
 
     traps: [signals.NSIG]?[]u8 = @splat(null),
+    /// traps of the parent shell, still listed by `trap` in a subshell
+    /// (so that `saved=$(trap)` works) until the subshell sets its own
+    parent_traps: [signals.NSIG]?[]u8 = @splat(null),
     ignored_on_entry: [signals.NSIG]bool = @splat(false),
 
     jobs: jobs.Table = .{},
@@ -185,6 +188,11 @@ pub const Shell = struct {
     out_buf: [4096]u8 = undefined,
 
     hist: history.History = .{},
+
+    /// Files sourced while running startup files (so that ~/.zenshrc is
+    /// not read twice when ~/.profile already sourced it).
+    startup: bool = false,
+    startup_sourced: std.ArrayList([2]u64) = .empty,
 
     pub fn init(self: *Shell, gpa: Allocator) void {
         self.* = .{ .gpa = gpa };

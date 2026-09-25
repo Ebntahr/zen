@@ -776,6 +776,11 @@ fn b_source(sh: *Shell, argv: Args) Error!u8 {
         sh.errMsg("{s}: {s}", .{ name, sys.lastError() });
         return 1;
     };
+    if (sh.startup) {
+        if (sys.stat(path)) |st| {
+            sh.startup_sourced.append(sh.gpa, .{ @intCast(st.dev), @intCast(st.ino) }) catch {};
+        } else |_| {}
+    }
     var old_params: ?[][]u8 = null;
     if (argv.len > 2) {
         old_params = sh.params;
@@ -1607,8 +1612,9 @@ fn b_read(sh: *Shell, argv: Args) Error!u8 {
         try sh.setVar("REPLY", line.items);
         return status;
     }
-    // IFS splitting, honouring escaped characters
-    const ifs = sh.ifs();
+    // IFS splitting, honouring escaped characters (copy IFS: `read IFS`
+    // would free it)
+    const ifs = try a.dupe(u8, sh.ifs());
     const s = line.items;
     const e = esc.items;
     const isIfs = struct {
@@ -1679,6 +1685,7 @@ pub fn defaultDisposition(sh: *Shell, sig: u32) sys.Handler {
 }
 
 fn setTrap(sh: *Shell, sig: u32, action: ?[]const u8) Error!void {
+    sh.parent_traps = @splat(null);
     if (sig != 0 and sig < 32 and sh.ignored_on_entry[sig] and !sh.interactive) return;
     if (sh.traps[sig]) |old| sh.gpa.free(old);
     sh.traps[sig] = if (action) |act| try sh.gpa.dupe(u8, act) else null;
@@ -1693,7 +1700,11 @@ fn setTrap(sh: *Shell, sig: u32, action: ?[]const u8) Error!void {
 }
 
 fn printTrap(sh: *Shell, sig: u32) Error!void {
-    const act = sh.traps[sig] orelse return;
+    var any_own = false;
+    for (sh.traps) |t| {
+        if (t != null) any_own = true;
+    }
+    const act = (if (any_own) sh.traps[sig] else sh.parent_traps[sig]) orelse return;
     sh.print("trap -- {s} {s}\n", .{ try shell.quote(sh.scratchAlloc(), act), signals.name(sig) });
 }
 

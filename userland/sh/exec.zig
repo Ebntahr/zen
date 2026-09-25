@@ -336,10 +336,8 @@ pub fn becomeSubshell(sh: *Shell) void {
     sh.hist.path = null;
     for (&sh.traps, 0..) |*t, i| {
         if (t.*) |a| {
-            if (a.len > 0 or i == 0) {
-                sh.gpa.free(a);
-                t.* = null;
-            }
+            sh.parent_traps[i] = a;
+            if (a.len > 0 or i == 0) t.* = null;
         }
     }
     signals.clearAll();
@@ -396,8 +394,23 @@ pub fn childRun(sh: *Shell, node: *const ast.Node) noreturn {
     exitShell(sh, st);
 }
 
+/// Forget finished background jobs nobody waited for (scripts that start
+/// many `cmd &` without `wait`).
+fn pruneJobs(sh: *Shell) void {
+    if (sh.jobs.list.items.len < 128) return;
+    sh.jobs.reapNonBlocking();
+    var i: usize = 0;
+    while (i < sh.jobs.list.items.len) {
+        const j = sh.jobs.list.items[i];
+        if (j.bg and j.state() == .done and (!sh.interactive or j.notified)) {
+            sh.jobs.remove(sh.gpa, j);
+        } else i += 1;
+    }
+}
+
 noinline fn runPipeline(sh: *Shell, cmds: []const *const ast.Node, text: []const u8, bg: bool) Error!u8 {
     sh.flushOut();
+    if (bg) pruneJobs(sh);
     const job = try sh.jobs.create(sh.gpa, text, bg);
     var prev: ?i32 = null;
     for (cmds, 0..) |cmd, i| {
@@ -908,7 +921,7 @@ pub fn searchPath(sh: *Shell, name: []const u8, path: []const u8, cache: bool) ?
             if (fallback == null) fallback = full;
             continue;
         }
-        if (cache and sh.opts.hashall) {
+        if (cache and sh.opts.hashall and full.len > 0 and full[0] == '/') {
             const k = sh.gpa.dupe(u8, name) catch return full;
             const v = sh.gpa.dupe(u8, full) catch {
                 sh.gpa.free(k);
@@ -954,10 +967,13 @@ noinline fn runExternal(sh: *Shell, argv: []const [:0]u8, assigns: []const Assig
 }
 
 /// Replace the current process with `path`. Never returns.
-pub fn execCommand(sh: *Shell, path: []const u8, argv: []const [:0]u8, assigns: []const Assign, redirs: []const ast.Redir) noreturn {
+pub fn execCommand(sh: *Shell, path_in: []const u8, argv: []const [:0]u8, assigns: []const Assign, redirs: []const ast.Redir) noreturn {
+    const a = sh.scratchAlloc();
+    // copy: `path_in` may live in the hash table, which a PATH=...
+    // assignment below clears
+    const path = a.dupe(u8, path_in) catch sys.exit(126);
     if (!(redir.apply(sh, redirs, null) catch false)) sys.exit(1);
     for (assigns) |as| sh.setVarFlags(as.name, as.value, .{ .exported = true, .force = true }) catch {};
-    const a = sh.scratchAlloc();
     const envp = sh.buildEnv(a) catch sys.exit(126);
     const av = a.alloc(?[*:0]const u8, argv.len + 1) catch sys.exit(126);
     for (argv, 0..) |x, i| av[i] = x.ptr;

@@ -59,3 +59,10 @@ cat <<EOF >out.txt
 to file
 EOF
 cat out.txt
+body=$(i=0; while [ $i -lt 2000 ]; do echo "line $i with some padding"; i=$((i+1)); done)
+eval "cat <<EOF | wc -l
+$body
+EOF"
+cat <<EOF | tail -1
+$body
+EOF

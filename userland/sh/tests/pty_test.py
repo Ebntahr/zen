@@ -442,12 +442,16 @@ def test_completion(env):
     t.send('d\t')
     assert_in('ls alpha_dir/', t.screen.cursor_line())
     t.send(C('u'))
+    # cd only completes directories
+    t.send('cd alp\t|')
+    assert_in('cd alpha_dir/|', t.screen.cursor_line())
+    t.send(C('u'))
     # escaping of spaces
     t.send('cat bet\t|')
     assert_in('cat beta\\ file.txt |', t.screen.cursor_line())
     t.send(C('u'))
     # variables
-    t.send('echo $HO\t')
+    t.send('echo $HOM\t')
     assert_in('echo $HOME', t.screen.cursor_line())
     t.send('\r')
     t.wait_for(re.escape(env.home))
@@ -479,9 +483,48 @@ def test_multiline(env):
     t.send(C('c'))
     t.run('echo after-cancel')
     t.wait_for(r'^after-cancel$')
-    # recalled multi-line entry
-    t.send(UP + UP + UP)
-    t.settle()
+    # a recalled multi-line entry is shown on several rows and re-executed
+    t.run('if true; then\recho recalled\rfi')
+    t.wait_for(r'^recalled$')
+    t.send(UP)
+    assert t.screen.cursor_line() == 'fi', t.screen.text()
+    t.send('\r')
+    lines = t.screen.text().split('\n')
+    assert lines.count('recalled') == 2, t.screen.text()
+
+
+def test_multiline_prompt(env):
+    t = env.term(cols=40, env={'PS1': 'first line\\n\\u\\$ '})
+    t.wait_for(r'^first line\nzen[$#]$')
+    t.send('echo ' + 'w' * 50)
+    t.send(C('a') + C('e') + '\r')
+    out = t.screen.text()
+    assert out.count('first line') == 2, out
+    assert ('w' * 50) in out.replace('\n', ''), out
+
+
+def test_read_builtin_tty(env):
+    t = env.term()
+    t.send('read -p "name? " n; echo "hi $n"\r')
+    t.wait_for(r'^name\?$')
+    t.send('zen\r')
+    t.wait_for(r'^hi zen$')
+    t.send('read -s pw; echo "len ${#pw}"\r')
+    t.send('secret\r')
+    t.wait_for(r'^len 6$')
+    assert 'secret' not in t.screen.text()
+    t.send('read -n 2 two; echo; echo "got $two"\r')
+    t.send('ab')
+    t.wait_for(r'^got ab$')
+
+
+def test_exec_restores_terminal(env):
+    t = env.term()
+    t.run('stty -a | grep -o -- "-\\?icanon" | head -1')
+    t.wait_for(r'^icanon$')
+    t.send('exec sh -c "stty -a | grep -o -- -\\?icanon | head -1; exit 3"\r')
+    t.wait_for(r'^icanon$')
+    assert t.wait_exit() == 3
 
 
 def test_wrapping(env):
@@ -578,7 +621,7 @@ def test_rc_and_prompt(env):
     raw = t.raw.decode('utf-8', 'replace')
     assert '\x1b[1;31m❯' in raw, 'prompt arrow should be red after failure'
     t.run('PS1="[\\u \\W]\\$ "')
-    t.wait_for(r'^\[zen Documents\]\$$')
+    t.wait_for(r'^\[zen Documents\][$#]$')
 
 
 def test_login_profile(env):

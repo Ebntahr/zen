@@ -17,6 +17,10 @@ const ast = @import("ast.zig");
 const linux = std.os.linux;
 const Shell = shell.Shell;
 
+/// Keep the default SIGPIPE disposition: a pipeline stage (including a
+/// forked subshell running builtins) must die when its reader goes away.
+pub const std_options: std.Options = .{ .keep_sigpipe = true };
+
 var the_shell: Shell = undefined;
 
 fn usage() noreturn {
@@ -170,15 +174,25 @@ pub fn main() u8 {
     if (sh.interactive) initInteractive(sh);
 
     // startup files
+    sh.startup = true;
     if (sh.login and !noprofile) {
         sourceIfExists(sh, "/etc/profile");
         if (sh.getVar("HOME")) |h| sourceIfExists(sh, joinTmp(sh, h, ".profile"));
     }
     if (sh.interactive and !norc) {
         if (sh.getVar("ENV")) |env| {
-            sourceIfExists(sh, env);
+            // POSIX: $ENV is subject to parameter expansion
+            var path: []const u8 = env;
+            if (std.mem.indexOfScalar(u8, env, '$') != null) {
+                if (parser.parseHeredocText(sh.scratchAlloc(), sh.gpa, env)) |parts| {
+                    path = @import("expand.zig").heredocToString(sh, .{ .parts = parts }) catch env;
+                } else |_| {}
+            }
+            sourceIfExists(sh, path);
         } else if (sh.getVar("HOME")) |h| sourceIfExists(sh, joinTmp(sh, h, ".zenshrc"));
     }
+    sh.startup = false;
+    sh.startup_sourced.clearAndFree(sh.gpa);
 
     if (cmd_string) |c| {
         const st = exec.runString(sh, c, .{}) catch |e| exec.errStatus(sh, e);
@@ -196,6 +210,11 @@ fn joinTmp(sh: *Shell, dir: []const u8, name: []const u8) []const u8 {
 fn sourceIfExists(sh: *Shell, path: []const u8) void {
     const st = sys.stat(path) catch return;
     if (!sys.isReg(st)) return;
+    const id = [2]u64{ @intCast(st.dev), @intCast(st.ino) };
+    for (sh.startup_sourced.items) |x| {
+        if (x[0] == id[0] and x[1] == id[1]) return; // already read
+    }
+    sh.startup_sourced.append(sh.gpa, id) catch {};
     const m = sh.scratch.mark();
     defer sh.scratch.release(m);
     const data = shell.readFileAlloc(sh.scratchAlloc(), path, 16 << 20) orelse return;
@@ -227,6 +246,10 @@ fn initVars(sh: *Shell) void {
     sh.setVar("OPTIND", "1") catch {};
     sh.setVar("PPID", std.fmt.allocPrint(a, "{d}", .{sys.getppid()}) catch "0") catch {};
     sh.setVar("ZENSH_VERSION", shell.version) catch {};
+    if (sh.getVar("HOSTNAME") == null) {
+        var hb: [65]u8 = undefined;
+        sh.setVar("HOSTNAME", sys.hostname(&hb)) catch {};
+    }
     if (sh.getVar("PATH") == null) sh.setVarFlags("PATH", "/bin:/usr/bin:/sbin:/usr/sbin", .{ .exported = true }) catch {};
     if (sh.getVar("HOME") == null) {
         if (shell.passwdLookup(a, .{ .uid = sys.getuid() })) |pw| sh.setVar("HOME", pw.home) catch {};
@@ -477,6 +500,11 @@ fn repl(sh: *Shell) noreturn {
             else => {},
         };
         buf.clearRetainingCapacity();
+        if (sys.winsize(sh.tty_fd)) |ws| {
+            var nb: [16]u8 = undefined;
+            sh.setVar("COLUMNS", std.fmt.bufPrint(&nb, "{d}", .{ws.col}) catch "80") catch {};
+            sh.setVar("LINES", std.fmt.bufPrint(&nb, "{d}", .{ws.row}) catch "24") catch {};
+        }
         if (sh.getVar("PROMPT_COMMAND")) |pc| {
             if (pc.len > 0) {
                 const saved = sh.last_status;

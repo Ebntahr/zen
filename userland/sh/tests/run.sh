@@ -7,6 +7,8 @@
 #   tests/run.sh --riscv      also cross-compile for riscv64-linux-none and run
 #                             the script cases under qemu-riscv64 (if present)
 #   tests/run.sh -k PATTERN   only run cases whose name matches PATTERN
+#   ZENSH_MODE=Debug tests/run.sh   build with a different optimize mode
+#                             (Debug poisons freed memory)
 #
 # Script cases live in tests/cases/NAME.sh with the expected combined
 # stdout/stderr plus a final "[exit N]" line in tests/cases/NAME.out.
@@ -43,8 +45,9 @@ trap 'rm -rf "$work"' EXIT
 bin=$work/bin
 mkdir -p "$bin"
 
-echo "building zensh (native, ReleaseSafe)..."
-if ! (cd "$bin" && "$ZIG" build-exe "$src/main.zig" -O ReleaseSafe --name zensh) >"$work/build.log" 2>&1; then
+MODE=${ZENSH_MODE:-ReleaseSafe}
+echo "building zensh (native, $MODE)..."
+if ! (cd "$bin" && "$ZIG" build-exe "$src/main.zig" -O "$MODE" --name zensh) >"$work/build.log" 2>&1; then
     cat "$work/build.log"
     echo "BUILD FAILED"
     exit 1
@@ -143,6 +146,17 @@ if [ $update = 0 ] && [ -z "$pattern" ]; then
         else
             fail=$((fail + 1))
             failed="$failed pty_test"
+        fi
+        if [ $riscv = 1 ] && command -v qemu-riscv64 >/dev/null 2>&1; then
+            echo "running interactive (pty) tests on riscv64 (qemu)..."
+            printf '#!/bin/sh\nexec qemu-riscv64 "%s" "$@"\n' "$bin/zensh-riscv64" >"$bin/zensh-rv-wrapper"
+            chmod +x "$bin/zensh-rv-wrapper"
+            if python3 "$here/pty_test.py" "$bin/zensh-rv-wrapper"; then
+                pass=$((pass + 1))
+            else
+                fail=$((fail + 1))
+                failed="$failed pty_test(riscv64)"
+            fi
         fi
     else
         echo "python3 not found: skipping pty tests"

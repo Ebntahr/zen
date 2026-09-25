@@ -36,6 +36,7 @@ const libs = [_]Lib{
     .{ .name = "textedit", .path = "apps/TextEdit/tests.zig", .deps = ui_deps },
     .{ .name = "settings", .path = "apps/Settings/tests.zig", .deps = ui_deps },
     .{ .name = "zbox", .path = "userland/zbox/tests.zig" },
+    .{ .name = "zensh", .path = "userland/sh/unit_tests.zig" },
 };
 
 const ui_deps = &[_][]const u8{ "abi", "zen", "gfx", "font", "ui", "icons", "vt" };
@@ -107,6 +108,7 @@ const tests = [_]Lib{
     .{ .name = "textedit", .path = "apps/TextEdit/tests.zig", .deps = ui_deps },
     .{ .name = "settings", .path = "apps/Settings/tests.zig", .deps = ui_deps },
     .{ .name = "zbox", .path = "userland/zbox/tests.zig" },
+    .{ .name = "zensh", .path = "userland/sh/unit_tests.zig" },
 };
 
 fn exists(path: []const u8) bool {

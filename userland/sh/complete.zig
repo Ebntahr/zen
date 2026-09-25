@@ -153,7 +153,24 @@ pub fn complete(sh: *Shell, a: Allocator, line: []const u8, pos: usize) !Result 
         return .{ .start = start, .candidates = list.items };
     }
 
-    // file names
+    // file names; some commands only take directories
+    var dirs_only = false;
+    {
+        // find the command word of this simple command
+        var k: usize = 0;
+        var cmd_start: usize = 0;
+        while (k < start) : (k += 1) {
+            if (std.mem.indexOfScalar(u8, ";|&(\n", line[k]) != null) cmd_start = k + 1;
+        }
+        while (cmd_start < start and (line[cmd_start] == ' ' or line[cmd_start] == '\t')) cmd_start += 1;
+        var ce = cmd_start;
+        while (ce < start and !isBreak(line, ce)) ce += 1;
+        const cmd = line[cmd_start..ce];
+        const dir_cmds = [_][]const u8{ "cd", "pushd", "rmdir", "mkdir" };
+        for (dir_cmds) |d| {
+            if (std.mem.eql(u8, d, cmd) and ce < start) dirs_only = true;
+        }
+    }
     var dir_part: []const u8 = "";
     var base = uw;
     if (std.mem.lastIndexOfScalar(u8, uw, '/')) |sl| {
@@ -191,6 +208,7 @@ pub fn complete(sh: *Shell, a: Allocator, line: []const u8, pos: usize) !Result 
         const is_dir = sys.isDir(full);
         const is_exec = !is_dir and sys.isExecutableFile(full);
         if (cmdpos and !is_dir and !is_exec) continue;
+        if (dirs_only and !is_dir) continue;
         const text = try std.mem.concat(a, u8, &.{ dir_part, e.name, if (is_dir) "/" else "" });
         const disp = try std.mem.concat(a, u8, &.{ e.name, if (is_dir) "/" else "" });
         try list.append(a, .{ .text = text, .display = disp, .is_dir = is_dir, .is_exec = is_exec });

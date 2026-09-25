@@ -724,6 +724,9 @@ pub const Editor = struct {
         self.prompt = prompt_text;
         self.cmd_cache.clear(self.gpa());
         if (!sys.isatty(self.in_fd)) return self.plainReadLine();
+        if (self.sh.getVar("TERM")) |term| {
+            if (std.mem.eql(u8, term, "dumb")) return self.plainReadLine();
+        }
         if (!self.enableRaw()) return self.plainReadLine();
         defer self.disableRaw();
         self.buf.clearRetainingCapacity();

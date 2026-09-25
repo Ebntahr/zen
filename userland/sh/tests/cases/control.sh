@@ -44,3 +44,5 @@ for i in 1 2; do echo $i; done | tr '12' 'ab'
 echo "last: $i"
 if [ -n "" ] || [ -z "" ]; then echo "test or"; fi
 k=3; while k=$((k-1)); [ $k -gt 0 ]; do echo "k=$k"; done
+while true; do echo y; done | head -2
+for i in 1 2 3; do echo "in pipe $i"; done | head -1

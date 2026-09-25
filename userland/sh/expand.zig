@@ -616,7 +616,14 @@ pub fn expandDeclWords(sh: *Shell, words: []const ast.Word) Error![][:0]u8 {
     var out: std.ArrayList([:0]u8) = .empty;
     for (words, 0..) |w, i| {
         if (i > 0 and isAssignmentWord(w)) {
-            try out.append(a, try a.dupeZ(u8, try wordToString(sh, w, true)));
+            // split "NAME=" off so the value gets assignment treatment
+            const first = w.parts[0].lit;
+            const eq = std.mem.indexOfScalar(u8, first, '=').?;
+            var vparts: std.ArrayList(ast.Part) = .empty;
+            if (eq + 1 < first.len) try vparts.append(a, .{ .lit = first[eq + 1 ..] });
+            try vparts.appendSlice(a, w.parts[1..]);
+            const val = try wordToString(sh, .{ .parts = vparts.items }, true);
+            try out.append(a, try std.mem.concatWithSentinel(a, u8, &.{ first[0 .. eq + 1], val }, 0));
         } else {
             const one = [1]ast.Word{w};
             try out.appendSlice(a, try expandWords(sh, &one));

@@ -7,7 +7,12 @@
 //!               Callers take a `mark()` before work and `release()` it after,
 //!               in strict stack order.
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
+
+/// In debug builds freed / released memory is poisoned to catch
+/// use-after-free bugs in tests.
+const poison = builtin.mode == .Debug;
 const Alignment = std.mem.Alignment;
 const page = std.heap.page_allocator;
 
@@ -68,6 +73,7 @@ fn gpaRemap(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize,
 }
 
 fn gpaFree(_: *anyopaque, memory: []u8, alignment: Alignment, ra: usize) void {
+    if (poison) @memset(memory, 0xAA);
     const cls = classOf(memory.len, alignment) orelse return page.rawFree(memory, alignment, ra);
     const node: *FreeNode = @ptrCast(@alignCast(memory.ptr));
     node.next = free_lists[cls];
@@ -95,6 +101,15 @@ pub const Scratch = struct {
     }
 
     pub fn release(self: *Scratch, m: Mark) void {
+        if (poison) {
+            var c = m.cur;
+            while (c <= self.cur) : (c += 1) {
+                const chunk = self.chunks[c] orelse continue;
+                const from = if (c == m.cur) m.off else 0;
+                const to = if (c == self.cur) self.off else chunk.len;
+                if (from < to) @memset(chunk[from..to], 0xAA);
+            }
+        }
         self.cur = m.cur;
         self.off = m.off;
     }

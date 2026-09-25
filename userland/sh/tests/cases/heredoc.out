@@ -21,4 +21,6 @@ line continuation joined
 inside cmdsub
 spaced delimiter
 to file
+2000
+line 1999 with some padding
 [exit 0]

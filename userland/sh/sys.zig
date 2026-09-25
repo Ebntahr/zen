@@ -324,13 +324,28 @@ pub noinline fn isExecutableFile(path: []const u8) bool {
     return access(path, X_OK);
 }
 
+/// Host name from uname(2), falling back to /etc/hostname and "zen-os".
 pub fn hostname(buf: []u8) []const u8 {
     var uts: linux.utsname = undefined;
-    if (E.init(linux.uname(&uts)) != .SUCCESS) return "zen-os";
-    const n = std.mem.sliceTo(&uts.nodename, 0);
-    if (n.len == 0 or n.len > buf.len) return "zen-os";
-    @memcpy(buf[0..n.len], n);
-    return buf[0..n.len];
+    if (E.init(linux.uname(&uts)) == .SUCCESS) {
+        const n = std.mem.sliceTo(&uts.nodename, 0);
+        if (n.len > 0 and n.len <= buf.len and !std.mem.eql(u8, n, "(none)") and !std.mem.eql(u8, n, "localhost")) {
+            @memcpy(buf[0..n.len], n);
+            return buf[0..n.len];
+        }
+    }
+    // Zen serves the host name as sys:hostname; /etc/hostname elsewhere
+    for ([_][]const u8{ "sys:hostname", "/etc/hostname" }) |p| {
+        const fd = open(p, .{ .ACCMODE = .RDONLY }, 0) catch continue;
+        defer close(fd);
+        const n = read(fd, buf) catch 0;
+        const t = std.mem.trim(u8, buf[0..n], " \t\r\n");
+        if (t.len > 0) {
+            std.mem.copyForwards(u8, buf, t);
+            return buf[0..t.len];
+        }
+    }
+    return "zen-os";
 }
 
 pub fn now() linux.timespec {
