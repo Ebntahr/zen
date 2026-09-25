@@ -19,6 +19,7 @@ pub const ScrollState = ui.ScrollState;
 pub const pm = ui.pm;
 
 test {
+    _ = ui;
     _ = fonts;
     _ = theme;
 }

@@ -153,6 +153,15 @@ pub const Ui = struct {
     reduce_transparency: bool = false,
     /// Documents were opened with this app (see `app.zig`'s openDocuments).
     documents_pending: bool = false,
+
+    // Pop-up menu state (see `popup`).
+    popup_id: Id = 0,
+    popup_rect: Rect = Rect.init(0, 0, 0, 0),
+    popup_items: []const []const u8 = &.{},
+    popup_selected: usize = 0,
+    popup_hover: usize = 0,
+    popup_pick: ?usize = null,
+    popup_seen: bool = false,
     resized: bool = false,
     cursor: abi.window.Cursor = .arrow,
     last_cursor: abi.window.Cursor = .arrow,
@@ -282,6 +291,7 @@ pub const Ui = struct {
         }
         self.canvas = canvasFor(self.win);
         self.hot = 0;
+        if (self.popup_id != 0) self.popupInput();
         if (self.mouse_released and !self.mouse_down) {
             // `active` is cleared at the end of the frame so widgets can see the release.
         }
@@ -298,6 +308,10 @@ pub const Ui = struct {
         {
             self.win.zoom();
         }
+        if (self.popup_id != 0) {
+            if (self.popup_seen) self.drawPopup() else self.popup_id = 0;
+        }
+        self.popup_seen = false;
         if (self.mouse_released) self.active = 0;
         if (self.mouse_pressed and self.hot == 0) self.focus = 0;
         if (self.cursor != self.last_cursor) {
@@ -815,6 +829,186 @@ pub const Ui = struct {
         return clicked;
     }
 
+    // ------------------------------------------------------------------
+    // Pop-up menu
+    // ------------------------------------------------------------------
+
+    const popup_row = 24;
+
+    /// A pop-up button showing `items[selected.*]`. Clicking opens the list
+    /// over the window (the current item under the pointer, as on macOS);
+    /// returns true when the user picked a different item.
+    pub fn popup(self: *Ui, id_str: []const u8, r: Rect, items: []const []const u8, selected: *usize) bool {
+        const id = hashId(id_str);
+        var changed = false;
+        if (self.popup_id == id) {
+            self.popup_seen = true;
+            if (self.popup_pick) |p| {
+                if (p < items.len and p != selected.*) {
+                    selected.* = p;
+                    changed = true;
+                }
+                self.popup_id = 0;
+                self.popup_pick = null;
+            } else {
+                self.popup_items = items;
+                self.popup_selected = selected.*;
+            }
+        }
+        const clicked = self.interact(id, r);
+        const t = self.theme;
+        const pressed = self.isActive(id) and self.hovering(r);
+        self.shadow(r, 6, 3, 1, 0x1A000000);
+        self.fillRound(r, 6, if (pressed) t.control_pressed else t.control_bg);
+        self.strokeRound(r, 6, 0.5, t.separator);
+        const label = if (selected.* < items.len) items[selected.*] else "";
+        self.text(Rect.init(r.x + 10, r.y, r.w - 34, r.h), label, .{});
+        // Up/down chevrons.
+        const cx: f32 = @floatFromInt(r.x + r.w - 14);
+        const cy: f32 = @floatFromInt(r.y + @divTrunc(r.h, 2));
+        self.line(cx - 3.5, cy - 2, cx, cy - 5, 1.4, t.secondary_label);
+        self.line(cx, cy - 5, cx + 3.5, cy - 2, 1.4, t.secondary_label);
+        self.line(cx - 3.5, cy + 2, cx, cy + 5, 1.4, t.secondary_label);
+        self.line(cx, cy + 5, cx + 3.5, cy + 2, 1.4, t.secondary_label);
+        if (clicked and self.popup_id != id and items.len > 0) {
+            var w: i32 = r.w;
+            for (items) |it| w = @max(w, @as(i32, @intFromFloat(self.measure(it, .regular, 13))) + 48);
+            const h: i32 = @as(i32, @intCast(items.len)) * popup_row + 8;
+            const sel: i32 = @intCast(@min(selected.*, items.len - 1));
+            var y = r.y + @divTrunc(r.h - popup_row, 2) - 4 - sel * popup_row;
+            y = std.math.clamp(y, 4, @max(4, self.height() - h - 4));
+            const x = std.math.clamp(r.x - 16, 4, @max(4, self.width() - w - 4));
+            self.popup_id = id;
+            self.popup_rect = Rect.init(x, y, w, h);
+            self.popup_items = items;
+            self.popup_selected = selected.*;
+            self.popup_hover = selected.*;
+            self.popup_pick = null;
+            self.popup_seen = true;
+        }
+        return changed;
+    }
+
+    /// An open pop-up takes the pointer and keys before the widgets under it.
+    fn popupInput(self: *Ui) void {
+        const r = self.popup_rect;
+        const n = self.popup_items.len;
+        const inside = r.contains(self.mouse_x, self.mouse_y);
+        if (inside and n > 0) {
+            const row = @divTrunc(self.mouse_y - r.y - 4, popup_row);
+            if (row >= 0 and row < n) self.popup_hover = @intCast(row);
+        }
+        if (self.mouse_pressed) {
+            if (inside) self.popup_pick = self.popup_hover else self.popup_id = 0;
+            self.mouse_pressed = false;
+        }
+        for (self.keys[0..self.key_count]) |k| switch (k.code) {
+            Key.up => self.popup_hover -|= 1,
+            Key.down => self.popup_hover = @min(self.popup_hover + 1, n -| 1),
+            Key.enter, Key.space => self.popup_pick = self.popup_hover,
+            Key.esc => self.popup_id = 0,
+            else => {},
+        };
+        self.key_count = 0;
+        self.text_len = 0;
+        if (inside) {
+            // Widgets below do not see the pointer.
+            self.mouse_x = -1000;
+            self.mouse_y = -1000;
+        }
+    }
+
+    fn drawPopup(self: *Ui) void {
+        const r = self.popup_rect;
+        const t = self.theme;
+        self.canvas = canvasFor(self.win);
+        self.shadow(r, 8, 16, 6, 0x40000000);
+        self.fillRound(r, 8, if (t.dark) 0xF62C2C30 else 0xF8F7F7F9);
+        self.strokeRound(r, 8, 0.5, if (t.dark) 0x33FFFFFF else 0x26000000);
+        for (self.popup_items, 0..) |it, i| {
+            const row = Rect.init(r.x + 4, r.y + 4 + @as(i32, @intCast(i)) * popup_row, r.w - 8, popup_row);
+            const hot = i == self.popup_hover;
+            if (hot) self.fillRound(row, 5, t.accent);
+            const fg: u32 = if (hot) 0xFFFFFFFF else t.label;
+            if (i == self.popup_selected) {
+                const cx: f32 = @floatFromInt(row.x + 12);
+                const cy: f32 = @floatFromInt(row.y + @divTrunc(popup_row, 2));
+                self.line(cx - 4, cy, cx - 1, cy + 3, 1.6, fg);
+                self.line(cx - 1, cy + 3, cx + 4, cy - 4, 1.6, fg);
+            }
+            self.text(Rect.init(row.x + 24, row.y, row.w - 30, row.h), it, .{ .color = fg });
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Tables
+    // ------------------------------------------------------------------
+
+    pub const Column = struct {
+        title: []const u8,
+        /// Pixels; 0 = share the remaining width.
+        width: i32 = 0,
+        @"align": Align = .left,
+    };
+
+    pub const SortState = struct { column: usize = 0, ascending: bool = true };
+
+    /// Column x positions and widths for a table `r.w` wide.
+    pub fn tableLayout(r: Rect, columns: []const Column, out: [][2]i32) void {
+        var fixed: i32 = 0;
+        var flex: i32 = 0;
+        for (columns) |c| {
+            if (c.width > 0) fixed += c.width else flex += 1;
+        }
+        const share = if (flex > 0) @divTrunc(@max(0, r.w - fixed), flex) else 0;
+        var x = r.x;
+        for (columns, 0..) |c, i| {
+            const w = if (c.width > 0) c.width else share;
+            out[i] = .{ x, w };
+            x += w;
+        }
+    }
+
+    /// Column headers. Clicking one sorts by it; clicking it again reverses
+    /// the order. Returns true when the sort changed.
+    pub fn tableHeader(self: *Ui, id_str: []const u8, r: Rect, columns: []const Column, sort: *SortState) bool {
+        var lay: [32][2]i32 = undefined;
+        const n = @min(columns.len, lay.len);
+        tableLayout(r, columns[0..n], lay[0..n]);
+        const t = self.theme;
+        var changed = false;
+        for (columns[0..n], 0..) |c, i| {
+            const cell = Rect.init(lay[i][0], r.y, lay[i][1], r.h);
+            if (self.interact(hashIdx(id_str, i), cell)) {
+                if (sort.column == i) sort.ascending = !sort.ascending else sort.* = .{ .column = i, .ascending = true };
+                changed = true;
+            }
+            const active = sort.column == i;
+            self.text(Rect.init(cell.x + 8, cell.y, cell.w - 24, cell.h), c.title, .{ .size = 11, .weight = if (active) .semibold else .medium, .color = t.secondary_label, .@"align" = c.@"align" });
+            if (active) {
+                const cx: f32 = @floatFromInt(cell.x + cell.w - 10);
+                const cy: f32 = @floatFromInt(cell.y + @divTrunc(cell.h, 2));
+                const d: f32 = if (sort.ascending) -2.5 else 2.5;
+                self.line(cx - 3.5, cy - d / 2, cx, cy + d, 1.3, t.secondary_label);
+                self.line(cx, cy + d, cx + 3.5, cy - d / 2, 1.3, t.secondary_label);
+            }
+            if (i + 1 < n) self.fillRect(Rect.init(cell.x + cell.w - 1, cell.y + 5, 1, cell.h - 10), t.separator);
+        }
+        self.hline(r.x, r.x + r.w, r.y + r.h - 1, t.separator);
+        return changed;
+    }
+
+    /// Draw one row's cells in the column layout (after `listRow`).
+    pub fn tableCells(self: *Ui, r: Rect, columns: []const Column, cells: []const []const u8, selected: bool) void {
+        var lay: [32][2]i32 = undefined;
+        const n = @min(@min(columns.len, cells.len), lay.len);
+        tableLayout(r, columns[0..n], lay[0..n]);
+        const color: ?u32 = if (selected and self.focused) 0xFFFFFFFF else null;
+        for (columns[0..n], cells[0..n], 0..) |c, text_, i| {
+            self.text(Rect.init(lay[i][0] + 8, r.y, lay[i][1] - 16, r.h), text_, .{ .color = color, .@"align" = c.@"align" });
+        }
+    }
+
     /// Rounded grouped panel (Settings style).
     pub fn group(self: *Ui, r: Rect) void {
         const t = self.theme;
@@ -933,3 +1127,50 @@ fn mapIndex(st: *const TextState, secure: bool, di: usize) usize {
     return it.i;
 }
 
+
+test "pop-up menu picks an item" {
+    const a = std.testing.allocator;
+    var fonts = fonts_mod.FontSet.load(a) catch return error.SkipZigTest;
+    defer fonts.deinit();
+    var win = try client.Window.openHeadless(a, .{ .width = 400, .height = 300 });
+    defer win.close();
+    var u = Ui.init(a, &win, &fonts);
+    defer u.deinit();
+    const items = [_][]const u8{ "Small", "Medium", "Large" };
+    var sel: usize = 0;
+    const button = Rect.init(100, 100, 120, 26);
+    const Ev = client.Event;
+    const frame = struct {
+        fn run(ui_: *Ui, evs: []const Ev, s: *usize, its: []const []const u8, b: Rect) bool {
+            ui_.beginFrame(evs);
+            const changed = ui_.popup("size", b, its, s);
+            ui_.endFrame();
+            return changed;
+        }
+    }.run;
+    _ = frame(&u, &.{}, &sel, &items, button);
+    // Click the button: the list opens.
+    _ = frame(&u, &.{.{ .kind = .mouse_down, .a = 150, .b = 110, .c = 1, .d = 1 }}, &sel, &items, button);
+    _ = frame(&u, &.{.{ .kind = .mouse_up, .a = 150, .b = 110, .c = 1 }}, &sel, &items, button);
+    try std.testing.expect(u.popup_id != 0);
+    // Click the third row.
+    const row_y = u.popup_rect.y + 4 + 2 * Ui.popup_row + 5;
+    try std.testing.expect(frame(&u, &.{.{ .kind = .mouse_down, .a = u.popup_rect.x + 30, .b = row_y, .c = 1, .d = 1 }}, &sel, &items, button));
+    try std.testing.expectEqual(@as(usize, 2), sel);
+    try std.testing.expectEqual(@as(Id, 0), u.popup_id);
+    // Escape closes without changing.
+    _ = frame(&u, &.{.{ .kind = .mouse_down, .a = 150, .b = 110, .c = 1, .d = 1 }}, &sel, &items, button);
+    _ = frame(&u, &.{.{ .kind = .mouse_up, .a = 150, .b = 110, .c = 1 }}, &sel, &items, button);
+    try std.testing.expect(u.popup_id != 0);
+    try std.testing.expect(!frame(&u, &.{.{ .kind = .key_down, .a = Key.esc }}, &sel, &items, button));
+    try std.testing.expectEqual(@as(Id, 0), u.popup_id);
+    try std.testing.expectEqual(@as(usize, 2), sel);
+}
+
+test "table layout shares the remaining width" {
+    var out: [3][2]i32 = undefined;
+    Ui.tableLayout(Rect.init(10, 0, 400, 20), &.{ .{ .title = "Name" }, .{ .title = "Size", .width = 100 }, .{ .title = "Kind" } }, &out);
+    try std.testing.expectEqual([2]i32{ 10, 150 }, out[0]);
+    try std.testing.expectEqual([2]i32{ 160, 100 }, out[1]);
+    try std.testing.expectEqual([2]i32{ 260, 150 }, out[2]);
+}

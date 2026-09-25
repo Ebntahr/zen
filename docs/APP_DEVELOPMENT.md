@@ -60,7 +60,8 @@ tools/zigmod run examples/zig-app/preview.zig -O ReleaseFast -- /tmp/hello.png  
 | Group | Functions |
 |-------|-----------|
 | Drawing | `clear`, `fillRect`, `fillRound`, `strokeRound`, `fillCircle`, `line`, `shadow`, `pushClip`/`popClip`, `text`, `textAt`, `paragraph`, `measure` |
-| Controls | `button` (normal/primary/plain/destructive/toolbar), `toggle`, `checkbox`, `slider`, `segmented`, `textField` (selection, clipboard, secure, capsule/plain), `sidebarItem`, `listRow`, `group`, `separator`, `progress`, `avatar` |
+| Controls | `button` (normal/primary/plain/destructive/toolbar), `toggle`, `checkbox`, `slider`, `segmented`, `popup` (pop-up menu), `textField` (selection, clipboard, secure, capsule/plain), `sidebarItem`, `listRow`, `group`, `separator`, `progress`, `avatar` |
+| Tables | `tableHeader` (sortable column headers with `SortState`), `tableCells` (a row's cells in the same `Column` layout; draw the row background with `listRow`), `tableLayout` |
 | Scrolling | `beginScroll`/`endScroll` with `ScrollState` |
 | Input | `interact(id, rect)`, `hovering`, `keyPressed`, `shortcut`, and the `keys`/`text_in` arrays |
 | Theme | `u.theme` (light/dark tokens and accent) is updated automatically when the system appearance changes |
