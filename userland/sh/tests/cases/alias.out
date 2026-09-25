@@ -1,0 +1,16 @@
+hello there
+something
+chained
+redefined
+aliased-echo recursive
+unaliased
+with-space expanded
+chain='say chained'
+hi='echo hello'
+ls_like='echo redefined'
+say='echo'
+sp='echo with-space '
+word='expanded'
+0
+alias not expanded in earlier-parsed function
+[exit 0]

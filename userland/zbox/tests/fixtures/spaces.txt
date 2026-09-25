@@ -1,0 +1,5 @@
+  3 zeta  alpha
+1 alpha   beta
+ 2 beta gamma
+10 gamma delta
+2 alpha zzz

@@ -1,0 +1,19 @@
+in sub: child
+after: parent
+/
+cwd preserved
+status 3
+nested
+sub params 2
+parent params 0
+func
+unset in sub
+func
+deep
+out
+sub-trap
+a
+b
+c
+0022
+[exit 0]

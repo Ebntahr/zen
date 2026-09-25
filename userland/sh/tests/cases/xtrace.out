@@ -1,0 +1,14 @@
++ echo hello
+hello
++ x=5
++ echo 5 'a b' ''
+5 a b 
+++ echo sub
++ y=sub
++ f arg
++ echo in-f
+in-f
++ : 5
++ set +x
+quiet
+[exit 0]

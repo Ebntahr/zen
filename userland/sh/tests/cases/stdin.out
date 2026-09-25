@@ -1,0 +1,10 @@
+got: hello from stdin
+one
+two
+args: a b
+multi-line
+heredoc via stdin
+after
+status 3
+from file
+[exit 0]

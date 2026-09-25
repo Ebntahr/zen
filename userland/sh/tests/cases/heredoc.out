@@ -1,0 +1,24 @@
+Hello, World!
+  Indented line
+Math: 42
+Cmd: substituted
+Escaped: $name \ `
+Quotes: "double" 'single'
+Literal $name $(echo no) \$
+Also literal $name
+Backslash-quoted $name
+tab-stripped World
+two tabs
+PIPED HEREDOC
+first
+second
+in function: arg1
+in function: arg2
+read: line 1
+read: line 2
+empty heredoc done
+line continuation joined
+inside cmdsub
+spaced delimiter
+to file
+[exit 0]

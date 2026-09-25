@@ -1,0 +1,19 @@
+out
+err
+out
+err
+out
+err
+out
+err
+OUT
+ERR
+here string
+multi word H
+x,y
+LOWER
+via 7
+moved
+fd dup
+zero heredoc
+[exit 0]

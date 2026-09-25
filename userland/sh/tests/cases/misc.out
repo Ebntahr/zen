@@ -1,0 +1,48 @@
+echo is a shell builtin
+cd is a shell builtin
+true is a shell builtin
+ls is PATH/ls
+if is a shell keyword
+f is a function
+f() { echo body; }
+ll is aliased to `ls -l'
+alias ll='ls -l'
+f
+echo
+if
+echo is a shell builtin
+type: nonexistent_zz: not found
+PATH/ls
+local: can only be used in a function
+return: can only `return' from a function or sourced script
+break: only meaningful in a `for', `while', or `until' loop
+u=rwx,g=rx,o=rx
+0077
+ 1) SIGHUP        2) SIGINT        3) SIGQUIT       4) SIGILL       
+trap -- 'echo x' USR1
+errexit        	off
+noglob         	off
+pipefail       	off
+errexit        	on
+set +o nounset
+set +o xtrace
+readonly RO1=1
+export EX1=v
+flags has h
+$$ same in subshell
+random in range
+lineno 27
+zensh 1.0.0 - the Zen OS shell
+cd [-L|-P] [dir|-]          change the working directory
+set: -Q: invalid option
+unlimited
+times ok
+via builtin
+wrapped: hi
+not-wrapped
+cd - ok
+wait no jobs 0
+getopts: usage: getopts optstring name [arg ...]
+let: expression expected
+shift: 99: shift count out of range
+[exit 5]

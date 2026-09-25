@@ -1,0 +1,23 @@
+c: name one two 2
+$0 default: zensh
+script: arg1 2
+status 4
+missing script status 127
+exit 300 -> 44
+-e status 1
+pipefail 1
++ echo traced
+traced
+noexec 0
+dollar-dash has c
+zensh X (Zen OS)
+profile-ran
+var=1
+noprofile var=
+shlvl ok
+syntax status 2
+unterminated status 2
+/
+ppid ok
+version var ok
+[exit 0]

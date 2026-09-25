@@ -1,0 +1,36 @@
+one
+one
+two
+three
+three
+three
+err
+both
+out
+err
+out
+err
+err
+to three
+again
+read from 4: three
+rw: data
+0
+created
+x
+var
+missing file
+abc
+sub-err
+sub-out
+w=three
+visible
+prefix redirect
+a b c
+noclobber works
+force
+captured
+in-func
+in-func
+in-func-err
+[exit 0]

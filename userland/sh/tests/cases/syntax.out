@@ -1,0 +1,31 @@
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error near unexpected token `fi'
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error near unexpected token `done'
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: syntax error: unexpected end of file
+status 2
+zensh: 1+: syntax error in expression (error token is "")
+status 1
+zensh: syntax error near unexpected token `;'
+status 2
+zensh: ${bad sub}: bad substitution
+status 1
+eval syntax status 2
+eval-still-works
+[exit 0]

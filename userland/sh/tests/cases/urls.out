@@ -1,0 +1,15 @@
+info
+in sys:proc
+sys:proc
+sys:proc/status
+file sys:proc/status
+file /etc/passwd
+scheme file
+sys:proc
+1
+a:b:c
+3
+scheme-cmd url:thing
+info
+out
+[exit 0]
