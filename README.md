@@ -18,6 +18,8 @@
 > ```
 >
 > Docker, VNC viewers and details: [docs/HOSTED.md](docs/HOSTED.md).
+>
+> 📖 **دليل المستخدم والمطوّر بالعربية:** [docs/GUIDE.ar.md](docs/GUIDE.ar.md)
 
 ![Zen OS desktop](docs/screenshots/desktop-light.jpg)
 
