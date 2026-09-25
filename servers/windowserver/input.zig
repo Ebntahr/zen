@@ -14,6 +14,8 @@ const proto = abi.window;
 const Key = inp.Key;
 
 pub const Actions = struct {
+    /// Save a screenshot of the screen (Cmd-Shift-3).
+    screenshot: *const fn (state: *st.State) void,
     /// Called to move the hardware cursor / change its shape.
     set_cursor: *const fn (x: i32, y: i32, shape: proto.Cursor) void,
     /// Launch or activate an app through launchd.
@@ -484,6 +486,10 @@ pub const Input = struct {
                 }
                 if (code == Key.space) {
                     if (value == 1) spotlight.open(state);
+                    return;
+                }
+                if (code == Key.@"3" and state.keys.shift) {
+                    if (value == 1) self.actions.screenshot(state);
                     return;
                 }
                 const ch = inp.keyToChar(code, false, false, false);

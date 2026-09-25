@@ -87,6 +87,28 @@ fn launch(s: *st.State, id: []const u8) void {
     }
 }
 
+fn screenshot(s: *st.State) void {
+    if (s.session_user_len == 0) return;
+    const ts = posix.clock_gettime(.REALTIME) catch return;
+    const es = std.time.epoch.EpochSeconds{ .secs = @intCast(@max(ts.sec, 0)) };
+    const yd = es.getEpochDay().calculateYearDay();
+    const md = yd.calculateMonthDay();
+    const ds = es.getDaySeconds();
+    var buf: [256]u8 = undefined;
+    const path = std.fmt.bufPrint(&buf, "/Users/{s}/Desktop/Screenshot {d}-{d:0>2}-{d:0>2} at {d:0>2}.{d:0>2}.{d:0>2}.png", .{
+        s.userName(), yd.year, md.month.numeric(), md.day_index + 1, ds.getHoursIntoDay(), ds.getMinutesIntoHour(), ds.getSecondsIntoMinute(),
+    }) catch return;
+    gfx.png.writeFile(comp.fb, path) catch {
+        postNotification(s, "Screenshot failed", "Could not write to the Desktop.");
+        return;
+    };
+    const z = gpa.dupeZ(u8, path) catch return;
+    defer gpa.free(z);
+    const linux = std.os.linux;
+    _ = linux.syscall5(.fchownat, @as(usize, @bitCast(@as(isize, linux.AT.FDCWD))), @intFromPtr(z.ptr), s.session_uid, s.session_uid, 0);
+    postNotification(s, "Screenshot", std.fs.path.basename(path));
+}
+
 fn sessionMessage(s: *st.State, msg: []const u8) void {
     s.control_out.appendSlice(s.allocator, msg) catch return;
     s.control_out.append(s.allocator, '\n') catch return;
@@ -248,7 +270,7 @@ pub fn main() !void {
     var in = input_mod.Input{
         .state = &state,
         .proto = &proto,
-        .actions = .{ .set_cursor = setCursor, .launch = launch, .session = sessionMessage },
+        .actions = .{ .set_cursor = setCursor, .launch = launch, .session = sessionMessage, .screenshot = screenshot },
     };
     const input_fd = posix.open("input:", .{ .ACCMODE = .RDONLY }, 0) catch -1;
 
