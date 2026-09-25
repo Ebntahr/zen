@@ -87,6 +87,16 @@ zig build            # all user-space programs → zig-out/sysroot (riscv64)
 zig build test       # host unit tests for the libraries and servers
 ```
 
+Build the root disk image and boot archive (host tools are built
+automatically):
+
+```sh
+zig build image                          # zig-out/zen-disk.img (ext2) + zig-out/initfs.img
+tools/prune-toolchain.sh /tmp/zig-rv64   # slim riscv64 Zig/clang toolchain (C/C++ inside Zen)
+zig build image -Dtoolchain=/tmp/zig-rv64 -Ddisk-size=1536
+zig build previews                       # desktop screenshots → zig-out/previews/
+```
+
 Individual pieces:
 
 ```sh
