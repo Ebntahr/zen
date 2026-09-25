@@ -544,6 +544,15 @@ pub const App = struct {
         return true;
     }
 
+    /// Logout/shutdown: ask to save unsaved changes first.
+    pub fn shouldQuit(self: *App, u: *Ui) bool {
+        if (self.editor.isDirty()) {
+            self.request(u, .quit);
+            return false;
+        }
+        return true;
+    }
+
     pub fn timeoutMs(self: *App) i32 {
         return if (self.needs_redraw) 0 else -1;
     }

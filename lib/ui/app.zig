@@ -8,7 +8,11 @@
 //!   pub fn menu(self: *Self, *abi.window.MenuWriter) void
 //!   pub fn onMenu(self: *Self, *Ui, id: u32) void
 //!   pub fn shouldClose(self: *Self, *Ui) bool     (close button / Cmd-W)
+//!   pub fn shouldQuit(self: *Self, *Ui) bool      (logout/shutdown; return false
+//!                                                  to ask the user first, then
+//!                                                  set `u.quit` when done)
 //!   pub fn timeoutMs(self: *Self) i32             (periodic refresh, -1 = none)
+//! Setting `u.want_frame` in `frame` requests another frame right away.
 //!   pub fn deinit(self: *Self) void
 
 const std = @import("std");
@@ -41,7 +45,7 @@ pub fn run(comptime App: type) !void {
     u.endFrame();
 
     while (!u.quit) {
-        const timeout: i32 = if (@hasDecl(App, "timeoutMs")) app.timeoutMs() else -1;
+        const timeout: i32 = if (u.want_frame) 0 else if (@hasDecl(App, "timeoutMs")) app.timeoutMs() else -1;
         const events = win.waitEvents(timeout);
         if (win.headless) break;
         u.beginFrame(events);
@@ -52,6 +56,11 @@ pub fn run(comptime App: type) !void {
             u.close_requested = false;
             const close = if (@hasDecl(App, "shouldClose")) app.shouldClose(&u) else true;
             if (close) break;
+        }
+        if (u.quit_requested) {
+            u.quit_requested = false;
+            const q = if (@hasDecl(App, "shouldQuit")) app.shouldQuit(&u) else true;
+            if (q) break;
         }
         if (u.quit) break;
         app.frame(&u);

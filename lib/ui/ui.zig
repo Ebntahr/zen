@@ -145,7 +145,12 @@ pub const Ui = struct {
     keys_consumed: bool = false,
 
     close_requested: bool = false,
+    /// The system asked the app to quit (logout, shutdown).
+    quit_requested: bool = false,
+    /// Set by the app (or the runner) to leave the event loop.
     quit: bool = false,
+    /// System "Reduce transparency" setting: draw opaque materials.
+    reduce_transparency: bool = false,
     resized: bool = false,
     cursor: abi.window.Cursor = .arrow,
     last_cursor: abi.window.Cursor = .arrow,
@@ -262,11 +267,12 @@ pub const Ui = struct {
                 .focus => self.focused = e.a != 0,
                 .resize => self.resized = true,
                 .close_request => self.close_requested = true,
-                .quit_request => self.quit = true,
+                .quit_request => self.quit_requested = true,
                 .menu => self.menu_id = @intCast(e.a),
                 .appearance => {
                     self.theme = Theme.get(e.a != 0, .blue);
                     self.theme.accent = @bitCast(e.b);
+                    self.reduce_transparency = e.c != 0;
                 },
                 else => {},
             }

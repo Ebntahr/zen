@@ -223,6 +223,11 @@ fn controlHook(s: *st.State, uid: u32, line: []const u8) void {
     } else if (std.mem.eql(u8, cmd, "clock24") and (root or uid == s.session_uid)) {
         s.appearance.clock_24h = std.mem.eql(u8, it.next() orelse "", "on");
         s.invalidate(.{ .w = s.width, .h = wm.MENUBAR });
+    } else if (std.mem.eql(u8, cmd, "tz") and (root or uid == s.session_uid)) {
+        // Local time offset from UTC in minutes (UTC-12:00 … UTC+14:00).
+        const v = std.fmt.parseInt(i32, it.next() orelse return, 10) catch return;
+        s.appearance.tz_offset_min = std.math.clamp(v, -720, 840);
+        s.invalidate(.{ .w = s.width, .h = wm.MENUBAR });
     } else if (std.mem.eql(u8, cmd, "notify")) {
         const rest = it.rest();
         postNotification(s, "Zen OS", rest);
