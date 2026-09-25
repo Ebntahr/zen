@@ -99,11 +99,26 @@ def key(s, keysym, down):
     s.sendall(struct.pack(">BBHI", 4, 1 if down else 0, 0, keysym))
 
 
+SHIFT = 0xFFE1
+SHIFTED = set('~!@#$%^&*()_+{}|:"<>?ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+
+
 def type_text(s, text):
     for ch in text:
+        if ch in SHIFTED:
+            key(s, SHIFT, True)
         key(s, ord(ch), True)
         key(s, ord(ch), False)
+        if ch in SHIFTED:
+            key(s, SHIFT, False)
         time.sleep(0.03)
+
+
+def chord(s, mod, keysym):
+    key(s, mod, True)
+    key(s, keysym, True)
+    key(s, keysym, False)
+    key(s, mod, False)
 
 
 def click(s, x, y):
@@ -128,6 +143,9 @@ def main():
     ap.add_argument("--port", type=int, default=5900)
     ap.add_argument("--timeout", type=float, default=30)
     ap.add_argument("--save")
+    ap.add_argument("--terminal-check", metavar="HOST_PATH",
+                    help="also open Terminal via Spotlight, run a command that writes "
+                         "/tmp/zen-smoke inside Zen, and wait for HOST_PATH to appear")
     args = ap.parse_args()
 
     s = connect(args.port, args.timeout)
@@ -167,6 +185,33 @@ def main():
     print(f"menu bar colours {menubar}, Dock colours {dock}")
     assert menubar > 20, "menu bar looks empty"
     assert dock > 100, "Dock looks empty"
+    if args.terminal_check:
+        # Spotlight (Command-Space), open Terminal, run a shell command.
+        chord(s, 0xFFEB, 0x20)
+        time.sleep(0.8)
+        type_text(s, "Terminal")
+        time.sleep(0.5)
+        key(s, 0xFF0D, True)
+        key(s, 0xFF0D, False)
+        time.sleep(3)
+        type_text(s, 'echo "zen $(uname -s)" {1..3} > /tmp/zen-smoke')
+        key(s, 0xFF0D, True)
+        key(s, 0xFF0D, False)
+        deadline = time.time() + args.timeout
+        while True:
+            try:
+                with open(args.terminal_check) as f:
+                    text = f.read().strip()
+                if text:
+                    break
+            except OSError:
+                pass
+            if time.time() > deadline:
+                raise AssertionError("Terminal did not run the command")
+            time.sleep(0.5)
+        print(f"Terminal ran a command: {text!r}")
+        assert text.startswith("zen ") and text.endswith("1 2 3"), "unexpected command output"
+        desk = frame(s, w, h)
     if args.save:
         save_ppm(args.save, desk, w, h)
     print("hosted smoke test passed")

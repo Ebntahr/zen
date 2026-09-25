@@ -25,7 +25,7 @@ jobs:
       - name: Hosted smoke test (log in through VNC)
         run: |
           sudo zig-out/hosted/zen-hosted > hosted.log 2>&1 &
-          python3 hosted/smoke_test.py --timeout 60
+          python3 hosted/smoke_test.py --timeout 60 --terminal-check zig-out/hosted/root/tmp/zen-smoke
       - name: Hosted log
         if: always()
         run: cat hosted.log || true

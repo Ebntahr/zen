@@ -150,9 +150,15 @@ that job over Unix sockets:
 
 ## Testing
 
-`hosted/smoke_test.py` connects like a VNC viewer. It checks that the login
-screen is drawn, logs in, and checks the desktop. CI runs it on every push:
+`hosted/smoke_test.py` connects like a VNC viewer and works through these steps:
+
+1. It checks that the login screen is drawn.
+2. It logs in and checks the desktop.
+3. With `--terminal-check`, it opens Terminal through Spotlight, types a
+   `zensh` command, and waits for the command's output file.
+
+CI runs it on every push:
 
 ```sh
-zig build hosted && (sudo zig-out/hosted/zen-hosted &) && python3 hosted/smoke_test.py
+zig build hosted && (sudo zig-out/hosted/zen-hosted &) && python3 hosted/smoke_test.py --terminal-check zig-out/hosted/root/tmp/zen-smoke
 ```
