@@ -111,13 +111,27 @@ fn setupDock(s: *st.State) void {
 }
 
 fn dockSetRunning(s: *st.State, id: []const u8, running: bool) void {
-    for (s.dock.items) |*d| {
+    for (s.dock.items, 0..) |*d, i| {
         if (std.mem.eql(u8, d.id, id)) {
             d.running = running;
+            // Unpinned apps leave the Dock when they quit.
+            if (!running and !d.pinned) _ = s.dock.orderedRemove(i);
             s.invalidateAll();
             return;
         }
     }
+    if (!running) return;
+    // A running app that is not in the Dock: add it before the Trash.
+    const owned_id = s.allocator.dupe(u8, id) catch return;
+    var name: []const u8 = owned_id;
+    if (std.mem.lastIndexOfScalar(u8, name, '.')) |dot| name = name[dot + 1 ..];
+    var icon_buf: [64]u8 = undefined;
+    const icon = s.allocator.dupe(u8, std.ascii.lowerString(icon_buf[0..@min(name.len, icon_buf.len)], name[0..@min(name.len, icon_buf.len)])) catch return;
+    const item = st.DockItem{ .id = owned_id, .name = name, .icon = icon, .pinned = false, .running = true };
+    var pos = s.dock.items.len;
+    if (pos > 0 and std.mem.eql(u8, s.dock.items[pos - 1].id, "trash")) pos -= 1;
+    s.dock.insert(s.allocator, pos, item) catch return;
+    s.invalidateAll();
 }
 
 fn controlHook(s: *st.State, uid: u32, line: []const u8) void {
