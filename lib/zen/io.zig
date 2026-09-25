@@ -10,7 +10,63 @@ const std = @import("std");
 const hosted = @import("hosted.zig");
 
 const posix = std.posix;
+const linux = std.os.linux;
 pub const page = std.heap.page_size_min;
+
+/// Schemes served by netd (see `abi.net`).
+const net_schemes = [_][]const u8{ "tcp", "udp", "icmp", "dns", "net" };
+
+pub const NetOpenError = error{
+    FileNotFound,
+    AccessDenied,
+    InvalidArgument,
+    WouldBlock,
+    SystemResources,
+    NameTooLong,
+    ConnectionRefused,
+    ConnectionResetByPeer,
+    ConnectionTimedOut,
+    NetworkUnreachable,
+    HostUnreachable,
+    AddressInUse,
+    Unexpected,
+};
+
+/// open(2) of a netd URL with the network errors kept apart (std's
+/// openat folds them into error.Unexpected).
+fn openNet(path: []const u8, flags: posix.O, mode: posix.mode_t) NetOpenError!posix.fd_t {
+    var buf: [4096]u8 = undefined;
+    if (path.len >= buf.len) return error.NameTooLong;
+    @memcpy(buf[0..path.len], path);
+    buf[path.len] = 0;
+    var f = flags;
+    f.CLOEXEC = true;
+    while (true) {
+        const rc = linux.openat(linux.AT.FDCWD, @ptrCast(&buf), f, mode);
+        return switch (linux.E.init(rc)) {
+            .SUCCESS => @intCast(rc),
+            .INTR => continue,
+            .NOENT, .NXIO, .NODEV => error.FileNotFound,
+            .ACCES, .PERM => error.AccessDenied,
+            .INVAL => error.InvalidArgument,
+            .AGAIN, .INPROGRESS => error.WouldBlock,
+            .NOMEM, .NFILE, .MFILE, .NOBUFS => error.SystemResources,
+            .CONNREFUSED => error.ConnectionRefused,
+            .CONNRESET => error.ConnectionResetByPeer,
+            .TIMEDOUT => error.ConnectionTimedOut,
+            .NETUNREACH => error.NetworkUnreachable,
+            .HOSTUNREACH => error.HostUnreachable,
+            .ADDRINUSE => error.AddressInUse,
+            else => error.Unexpected,
+        };
+    }
+}
+
+fn isNetUrl(path: []const u8) bool {
+    const u = hosted.splitUrl(path) orelse return false;
+    for (net_schemes) |s| if (std.mem.eql(u8, u.scheme, s)) return true;
+    return false;
+}
 
 pub fn open(path: []const u8, flags: posix.O, mode: posix.mode_t) !posix.fd_t {
     if (hosted.enabled()) {
@@ -22,6 +78,7 @@ pub fn open(path: []const u8, flags: posix.O, mode: posix.mode_t) !posix.fd_t {
             return hosted.open(path, raw);
         }
     }
+    if (isNetUrl(path)) return openNet(path, flags, mode);
     return posix.open(path, flags, mode);
 }
 

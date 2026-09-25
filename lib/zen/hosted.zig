@@ -90,11 +90,24 @@ pub const Error = error{
     Unsupported,
     BrokenPipe,
     Io,
+    // Network failures reported by netd.
+    ConnectionRefused,
+    ConnectionResetByPeer,
+    ConnectionTimedOut,
+    NetworkUnreachable,
+    HostUnreachable,
+    AddressInUse,
 };
 
 fn errnoError(e: linux.E) Error {
     return switch (e) {
-        .NOENT, .NODEV, .NXIO, .CONNREFUSED => error.NotFound,
+        .CONNREFUSED => error.ConnectionRefused,
+        .CONNRESET => error.ConnectionResetByPeer,
+        .TIMEDOUT => error.ConnectionTimedOut,
+        .NETUNREACH => error.NetworkUnreachable,
+        .HOSTUNREACH => error.HostUnreachable,
+        .ADDRINUSE => error.AddressInUse,
+        .NOENT, .NODEV, .NXIO => error.NotFound,
         .ACCES, .PERM => error.AccessDenied,
         .AGAIN => error.WouldBlock,
         .BADF => error.BadFd,
