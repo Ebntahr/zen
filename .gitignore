@@ -1,9 +1,12 @@
-/zig-cache
+.zig-cache/
+zig-cache/
+zig-out/
+/build/
+*.img
+*.o
 
-/zen
-
-/run/zen.iso
-/run/iso/boot/zen
-/run/iso/servers/*
-
-!.gitkeep
+# legacy x86 build outputs
+/legacy/zen
+/legacy/run/zen.iso
+/legacy/run/iso/boot/zen
+/legacy/run/iso/servers/*
