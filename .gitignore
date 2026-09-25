@@ -12,3 +12,5 @@ zig-out/
 /legacy/run/iso/servers/*
 keys/
 *.whl
+__pycache__/
+*.pyc

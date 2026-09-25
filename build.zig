@@ -29,6 +29,7 @@ const libs = [_]Lib{
     .{ .name = "gfx", .path = "lib/gfx/root.zig" },
     .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
     .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
+    .{ .name = "terminal", .path = "apps/Terminal/main.zig", .deps = ui_deps },
 };
 
 const ui_deps = &[_][]const u8{ "abi", "zen", "gfx", "font", "ui", "icons", "vt" };
@@ -93,6 +94,7 @@ const tests = [_]Lib{
     .{ .name = "gfx", .path = "lib/gfx/root.zig" },
     .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
     .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
+    .{ .name = "terminal", .path = "apps/Terminal/main.zig", .deps = ui_deps },
 };
 
 fn exists(path: []const u8) bool {
