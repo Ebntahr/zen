@@ -19,6 +19,7 @@ const std = @import("std");
 
 pub const ttf = @import("ttf.zig");
 pub const utf8 = @import("utf8.zig");
+pub const arabic = @import("arabic.zig");
 pub const raster = @import("raster.zig");
 const face = @import("face.zig");
 const draw = @import("draw.zig");

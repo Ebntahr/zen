@@ -106,3 +106,9 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
+
+## Noto Sans Arabic
+
+`NotoSansArabic-Regular.ttf`, `NotoSansArabic-SemiBold.ttf`, `NotoSansArabic-Bold.ttf`:
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic).
+Licensed under the SIL Open Font License, Version 1.1 (text above).

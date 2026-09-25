@@ -5,6 +5,7 @@
 //! `Face.glyphs` + `Face.glyphBitmap` + `splitSubpixel` directly.
 
 const std = @import("std");
+const arabic = @import("arabic.zig");
 const face_mod = @import("face.zig");
 const Face = face_mod.Face;
 const GlyphBitmap = face_mod.GlyphBitmap;
@@ -139,7 +140,9 @@ fn drawGlyphLut(target: Target, bitmap: GlyphBitmap, x: i32, baseline: i32, colo
 /// `line_height` lower. Returns the pen x after the last character.
 /// Glyphs outside the clip are not rasterized; a glyph that cannot be
 /// rasterized (out of memory) is skipped.
-pub fn drawText(target: Target, face: *Face, text: []const u8, x: f32, baseline_y: f32, color: u32) f32 {
+pub fn drawText(target: Target, face: *Face, text_in: []const u8, x: f32, baseline_y: f32, color: u32) f32 {
+    var shape_buf: [2048]u8 = undefined;
+    const text = arabic.shapeLine(text_in, &shape_buf);
     var it = face.glyphs(text);
     var baseline = baseline_y;
     const b = target.bounds();

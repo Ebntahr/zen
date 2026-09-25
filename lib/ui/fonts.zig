@@ -14,6 +14,10 @@ const files = [_][]const u8{
     "Inter-Bold.ttf",
     "JetBrainsMono-Regular.ttf",
     "JetBrainsMono-Bold.ttf",
+    // Arabic fallbacks (indices 6..8): regular, semibold, bold.
+    "NotoSansArabic-Regular.ttf",
+    "NotoSansArabic-SemiBold.ttf",
+    "NotoSansArabic-Bold.ttf",
 };
 
 const search_dirs = [_][]const u8{ "/System/Library/Fonts", "assets/fonts", "../assets/fonts" };
@@ -83,9 +87,34 @@ pub const FontSet = struct {
         if (self.faces.get(key)) |f| return f;
         const f = self.allocator.create(font.Face) catch @panic("out of memory");
         f.* = font.Face.init(self.allocator, self.fonts[idx].?, @as(f32, @floatFromInt(q)) / 4, .{}) catch @panic("bad font size");
-        // Mono faces fall back to Inter for symbols.
-        if (idx >= 4 and self.fonts[0] != null) f.fallback = self.face(.regular, size);
+        // Mono faces fall back to Inter for symbols; Inter falls back to
+        // Noto Sans Arabic for Arabic script.
+        if ((idx == 4 or idx == 5) and self.fonts[0] != null) {
+            f.fallback = self.face(.regular, size);
+        } else if (idx < 4) {
+            const ar: usize = switch (idx) {
+                0, 1 => 6,
+                2 => 7,
+                else => 8,
+            };
+            f.fallback = self.rawFace(ar, size);
+        }
         self.faces.put(self.allocator, key, f) catch @panic("out of memory");
+        return f;
+    }
+
+    /// A face for font file `idx` without fallbacks (null if not loaded).
+    fn rawFace(self: *FontSet, idx: usize, size: f32) ?*font.Face {
+        const ff = self.fonts[idx] orelse return null;
+        const q: u32 = @intFromFloat(@max(1, @round(size * 4)));
+        const key: u32 = (@as(u32, @intCast(idx)) << 24) | q;
+        if (self.faces.get(key)) |f| return f;
+        const f = self.allocator.create(font.Face) catch return null;
+        f.* = font.Face.init(self.allocator, ff, @as(f32, @floatFromInt(q)) / 4, .{}) catch {
+            self.allocator.destroy(f);
+            return null;
+        };
+        self.faces.put(self.allocator, key, f) catch return null;
         return f;
     }
 

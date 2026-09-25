@@ -6,6 +6,7 @@
 //! wrapping, truncation with an ellipsis, and caret <-> x mapping.
 
 const std = @import("std");
+const arabic = @import("arabic.zig");
 const ttf = @import("ttf.zig");
 const raster = @import("raster.zig");
 const utf8 = @import("utf8.zig");
@@ -363,7 +364,9 @@ pub const Face = struct {
     }
 
     /// Width in pixels of the widest line of `text` ('\n' separates lines).
-    pub fn measure(self: *Face, text: []const u8) f32 {
+    pub fn measure(self: *Face, text_in: []const u8) f32 {
+        var shape_buf: [2048]u8 = undefined;
+        const text = arabic.shapeLine(text_in, &shape_buf);
         var it = self.glyphs(text);
         var widest: f32 = 0;
         while (it.next()) |item| {
