@@ -30,6 +30,10 @@ const libs = [_]Lib{
     .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
     .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
     .{ .name = "terminal", .path = "apps/Terminal/main.zig", .deps = ui_deps },
+    .{ .name = "calculator", .path = "apps/Calculator/app.zig", .deps = ui_deps },
+    .{ .name = "activity", .path = "apps/ActivityMonitor/app.zig", .deps = ui_deps },
+    .{ .name = "finder", .path = "apps/Finder/tests.zig", .deps = ui_deps },
+    .{ .name = "textedit", .path = "apps/TextEdit/tests.zig", .deps = ui_deps },
 };
 
 const ui_deps = &[_][]const u8{ "abi", "zen", "gfx", "font", "ui", "icons", "vt" };
@@ -95,6 +99,10 @@ const tests = [_]Lib{
     .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
     .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
     .{ .name = "terminal", .path = "apps/Terminal/main.zig", .deps = ui_deps },
+    .{ .name = "calculator", .path = "apps/Calculator/app.zig", .deps = ui_deps },
+    .{ .name = "activity", .path = "apps/ActivityMonitor/app.zig", .deps = ui_deps },
+    .{ .name = "finder", .path = "apps/Finder/tests.zig", .deps = ui_deps },
+    .{ .name = "textedit", .path = "apps/TextEdit/tests.zig", .deps = ui_deps },
 };
 
 fn exists(path: []const u8) bool {
@@ -278,6 +286,29 @@ pub fn build(b: *std.Build) void {
         r.addArg(mode);
         r.step.dependOn(&mkdir.step);
         previews.dependOn(&r.step);
+    }
+
+    // Desktop with real app windows (only when those apps are built).
+    const showcase_apps = [_][2][]const u8{ .{ "settings_app", "Settings" }, .{ "calculator_app", "Calculator" }, .{ "terminal_app", "Terminal" } };
+    const have_showcase = for (showcase_apps) |sa| {
+        if (!exists(b.fmt("apps/{s}/app.zig", .{sa[1]})) or skipped(skip, sa[1])) break false;
+    } else true;
+    if (have_showcase) {
+        const showcase = makeExe(b, host_mods, "showcase", "tools/preview/showcase.zig", ui_deps, host_target, .ReleaseFast);
+        showcase.root_module.addImport("windowserver", ws_mod);
+        for (showcase_apps) |sa| {
+            const m = b.createModule(.{ .root_source_file = b.path(b.fmt("apps/{s}/app.zig", .{sa[1]})), .target = host_target, .optimize = .ReleaseFast });
+            for (ui_deps) |d| m.addImport(d, host_mods.get(d).?);
+            showcase.root_module.addImport(sa[0], m);
+        }
+        for ([_][]const u8{ "light", "dark" }) |mode| {
+            const r = b.addRunArtifact(showcase);
+            r.has_side_effects = true;
+            r.addArg(b.getInstallPath(.prefix, b.fmt("previews/showcase-{s}.png", .{mode})));
+            r.addArg(mode);
+            r.step.dependOn(&mkdir.step);
+            previews.dependOn(&r.step);
+        }
     }
 
     // ---- host unit tests -------------------------------------------------------------

@@ -9,6 +9,24 @@
 > handling, scheduler and system calls are **not written yet**, so the image
 > does **not boot** today. See [Status](#status--الحالة).
 
+![Zen OS desktop](docs/screenshots/desktop-light.jpg)
+
+<table>
+<tr>
+<td><img src="docs/screenshots/finder.jpg" alt="Finder"></td>
+<td><img src="docs/screenshots/textedit.jpg" alt="TextEdit"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/settings.jpg" alt="Settings"></td>
+<td><img src="docs/screenshots/activity-monitor.jpg" alt="Activity Monitor"></td>
+</tr>
+</table>
+
+<sub>These are host renders, made by `zig build previews` and each app's
+`preview.zig`. They run the real window-server compositor and the apps' own
+drawing code headless, because the system does not boot yet.
+الصور مولَّدة على جهاز التطوير بنفس كود المُركِّب والتطبيقات، لأن النظام لا يُقلع بعد.</sub>
+
 ---
 
 ## العربية
