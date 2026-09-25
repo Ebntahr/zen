@@ -45,9 +45,9 @@ pub const Protocol = struct {
         self.srv.replyError(id, e) catch {};
     }
 
+    /// Window buffers are shared with the app through `fmap`.
     fn allocBuffer(w: i32, h: i32) ![]align(4096) u32 {
-        const bytes = std.mem.alignForward(usize, @as(usize, @intCast(w * h)) * 4, 4096);
-        const mem = try posix.mmap(null, bytes, posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .POPULATE = true }, -1, 0);
+        const mem = try zen.shm.allocate(@as(usize, @intCast(w * h)) * 4);
         const words: [*]align(4096) u32 = @ptrCast(@alignCast(mem.ptr));
         return words[0..@intCast(w * h)];
     }
@@ -55,7 +55,7 @@ pub const Protocol = struct {
     fn freeBuffer(pixels: []align(4096) u32) void {
         if (pixels.len == 0) return;
         const bytes: [*]align(4096) u8 = @ptrCast(pixels.ptr);
-        posix.munmap(bytes[0..std.mem.alignForward(usize, pixels.len * 4, 4096)]);
+        zen.shm.free(bytes[0..std.mem.alignForward(usize, pixels.len * 4, 4096)]);
     }
 
     /// (Re)allocate a window's buffer for its current content size.

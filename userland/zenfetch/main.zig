@@ -87,7 +87,7 @@ pub fn main() !void {
     try info.append(a, "\x1b[2m-----------------\x1b[0m");
     const rows = [_]struct { []const u8, []const u8 }{
         .{ "OS", try std.fmt.allocPrint(a, "{s} {s}", .{ pretty, machine }) },
-        .{ "Kernel", try std.fmt.allocPrint(a, "{s} {s}", .{ sysname, release }) },
+        .{ "Kernel", if (std.mem.eql(u8, sysname, "Zen")) try std.fmt.allocPrint(a, "Zen microkernel {s}", .{release}) else try std.fmt.allocPrint(a, "{s} {s} (hosted)", .{ sysname, release }) },
         .{ "Uptime", try std.fmt.allocPrint(a, "{d} h, {d} min", .{ uptime_s / 3600, (uptime_s / 60) % 60 }) },
         .{ "Shell", shell },
         .{ "DE", "Zen Desktop (Liquid Glass)" },

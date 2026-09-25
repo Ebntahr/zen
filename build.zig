@@ -5,6 +5,8 @@
 //!                          image: zig-out/initfs.img, zig-out/zen-disk.img
 //!   zig build test         host unit tests of the libraries and servers
 //!   zig build previews     render desktop previews (PNG) to zig-out/previews
+//!   zig build hosted       Zen for running hosted on Linux/Docker (zig-out/hosted)
+//!   zig build run-hosted   run it; the desktop appears at http://127.0.0.1:6080
 //!
 //! User space targets `riscv64-linux-none`: Zen implements the Linux
 //! riscv64 system-call ABI, so programs use Zig's std directly.
@@ -29,14 +31,6 @@ const libs = [_]Lib{
     .{ .name = "gfx", .path = "lib/gfx/root.zig" },
     .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
     .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
-    .{ .name = "terminal", .path = "apps/Terminal/main.zig", .deps = ui_deps },
-    .{ .name = "calculator", .path = "apps/Calculator/app.zig", .deps = ui_deps },
-    .{ .name = "activity", .path = "apps/ActivityMonitor/app.zig", .deps = ui_deps },
-    .{ .name = "finder", .path = "apps/Finder/tests.zig", .deps = ui_deps },
-    .{ .name = "textedit", .path = "apps/TextEdit/tests.zig", .deps = ui_deps },
-    .{ .name = "settings", .path = "apps/Settings/tests.zig", .deps = ui_deps },
-    .{ .name = "zbox", .path = "userland/zbox/tests.zig" },
-    .{ .name = "zensh", .path = "userland/sh/unit_tests.zig" },
 };
 
 const ui_deps = &[_][]const u8{ "abi", "zen", "gfx", "font", "ui", "icons", "vt" };
@@ -49,15 +43,18 @@ const Program = struct {
     dir: []const u8 = "bin",
     /// Also packed into the boot archive under this path.
     initfs: ?[]const u8 = null,
+    /// Zen hardware drivers are not needed hosted; vncd only runs hosted.
+    only: enum { both, zen, hosted } = .both,
 };
 
 /// User-space programs installed into the system image.
 const programs = [_]Program{
     .{ .name = "init", .path = "servers/init/main.zig", .deps = &.{ "abi", "zen" }, .dir = "sbin", .initfs = "sbin/init" },
-    .{ .name = "virtio-blkd", .path = "drivers/virtio-blk/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers", .initfs = "drivers/virtio-blkd" },
-    .{ .name = "virtio-gpud", .path = "drivers/virtio-gpu/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers", .initfs = "drivers/virtio-gpud" },
-    .{ .name = "virtio-inputd", .path = "drivers/virtio-input/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers", .initfs = "drivers/virtio-inputd" },
-    .{ .name = "fsd", .path = "servers/fsd/main.zig", .deps = &.{ "abi", "zen", "ext2" }, .dir = "System/Library/Servers", .initfs = "servers/fsd" },
+    .{ .name = "virtio-blkd", .path = "drivers/virtio-blk/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers", .initfs = "drivers/virtio-blkd", .only = .zen },
+    .{ .name = "virtio-gpud", .path = "drivers/virtio-gpu/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers", .initfs = "drivers/virtio-gpud", .only = .zen },
+    .{ .name = "virtio-inputd", .path = "drivers/virtio-input/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers", .initfs = "drivers/virtio-inputd", .only = .zen },
+    .{ .name = "fsd", .path = "servers/fsd/main.zig", .deps = &.{ "abi", "zen", "ext2" }, .dir = "System/Library/Servers", .initfs = "servers/fsd", .only = .zen },
+    .{ .name = "vncd", .path = "hosted/vncd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers", .only = .hosted },
     .{ .name = "ptyd", .path = "servers/ptyd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers" },
     .{ .name = "launchd", .path = "servers/launchd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers" },
     .{ .name = "windowserver", .path = "servers/windowserver/main.zig", .deps = ui_deps, .dir = "System/Library/Servers" },
@@ -109,6 +106,7 @@ const tests = [_]Lib{
     .{ .name = "settings", .path = "apps/Settings/tests.zig", .deps = ui_deps },
     .{ .name = "zbox", .path = "userland/zbox/tests.zig" },
     .{ .name = "zensh", .path = "userland/sh/unit_tests.zig" },
+    .{ .name = "vncd", .path = "hosted/vncd/rfb.zig" },
 };
 
 fn exists(path: []const u8) bool {
@@ -156,6 +154,80 @@ fn makeExe(
     return b.addExecutable(.{ .name = name, .root_module = root });
 }
 
+const SystemOptions = struct {
+    /// Install directory under zig-out.
+    prefix: []const u8,
+    hosted: bool,
+    skip: []const u8,
+    toolchain: ?[]const u8 = null,
+    initfs_specs: ?*std.ArrayList([]const u8) = null,
+    initfs_deps: ?*std.ArrayList(*std.Build.Step) = null,
+};
+
+/// Install programs, app bundles, system files and fonts into
+/// zig-out/<prefix> for `target` (riscv64 for Zen, the host for hosted).
+fn addSystem(
+    b: *std.Build,
+    step: *std.Build.Step,
+    mods: Mods,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    o: SystemOptions,
+) void {
+    for (programs) |p| {
+        if (!exists(p.path) or skipped(o.skip, p.name)) continue;
+        if ((p.only == .zen and o.hosted) or (p.only == .hosted and !o.hosted)) continue;
+        const e = makeExe(b, mods, p.name, p.path, p.deps, target, optimize);
+        const dest = b.fmt("{s}/{s}", .{ o.prefix, p.dir });
+        const inst = b.addInstallArtifact(e, .{ .dest_dir = .{ .override = .{ .custom = dest } } });
+        step.dependOn(&inst.step);
+        if (p.initfs) |ipath| if (o.initfs_specs) |specs| {
+            specs.append(b.allocator, b.fmt("{s}={s}", .{ ipath, b.getInstallPath(.{ .custom = dest }, p.name) })) catch @panic("oom");
+            o.initfs_deps.?.append(b.allocator, &inst.step) catch @panic("oom");
+        };
+    }
+    for (apps) |app| {
+        const main_path = b.fmt("apps/{s}/main.zig", .{app.dir});
+        if (!exists(main_path) or skipped(o.skip, app.dir)) continue;
+        const contents = b.fmt("{s}/{s}/{s}.app/Contents", .{ o.prefix, app.location, app.name });
+        const e = makeExe(b, mods, app.exe, main_path, ui_deps, target, optimize);
+        step.dependOn(&b.addInstallArtifact(e, .{ .dest_dir = .{ .override = .{ .custom = b.fmt("{s}/Bin", .{contents}) } } }).step);
+        step.dependOn(&b.addInstallDirectory(.{
+            .source_dir = b.path(b.fmt("apps/{s}/bundle", .{app.dir})),
+            .install_dir = .{ .custom = contents },
+            .install_subdir = "",
+        }).step);
+    }
+    step.dependOn(&b.addInstallDirectory(.{
+        .source_dir = b.path("sysroot"),
+        .install_dir = .{ .custom = o.prefix },
+        .install_subdir = "",
+        .exclude_extensions = &.{ "manifest.txt", "links.txt" },
+    }).step);
+    if (o.hosted) {
+        // Hosted init applies ownership itself when it runs as root.
+        step.dependOn(&b.addInstallFile(b.path("sysroot/manifest.txt"), b.fmt("{s}/etc/zen/manifest.txt", .{o.prefix})).step);
+    }
+    step.dependOn(&b.addInstallDirectory(.{
+        .source_dir = b.path("assets/fonts"),
+        .install_dir = .{ .custom = b.fmt("{s}/System/Library/Fonts", .{o.prefix}) },
+        .install_subdir = "",
+    }).step);
+    step.dependOn(&b.addInstallDirectory(.{
+        .source_dir = b.path("examples"),
+        .install_dir = .{ .custom = b.fmt("{s}/usr/share/zen/examples", .{o.prefix}) },
+        .install_subdir = "",
+    }).step);
+    if (o.toolchain) |tc| {
+        step.dependOn(&b.addInstallDirectory(.{
+            .source_dir = .{ .cwd_relative = tc },
+            .install_dir = .{ .custom = b.fmt("{s}/usr/lib/zig", .{o.prefix}) },
+            .install_subdir = "",
+            .exclude_extensions = &.{ ".py", ".pyc" },
+        }).step);
+    }
+}
+
 pub fn build(b: *std.Build) void {
     // Zen user space defaults to ReleaseSmall: the image is booted on an
     // emulated CPU where code size and speed both matter.
@@ -170,60 +242,17 @@ pub fn build(b: *std.Build) void {
     const host_mods = makeModules(b, host_target, .ReleaseFast);
     const install = b.getInstallStep();
 
-    // ---- programs ------------------------------------------------------------
+    // ---- system root: programs, app bundles, system files ------------------------
     var initfs_specs: std.ArrayList([]const u8) = .empty;
     var initfs_deps: std.ArrayList(*std.Build.Step) = .empty;
-    for (programs) |p| {
-        if (!exists(p.path) or skipped(skip, p.name)) continue;
-        const e = makeExe(b, zen_mods, p.name, p.path, p.deps, zen_target, optimize);
-        const dest = b.fmt("sysroot/{s}", .{p.dir});
-        const inst = b.addInstallArtifact(e, .{ .dest_dir = .{ .override = .{ .custom = dest } } });
-        install.dependOn(&inst.step);
-        if (p.initfs) |ipath| {
-            initfs_specs.append(b.allocator, b.fmt("{s}={s}", .{ ipath, b.getInstallPath(.{ .custom = dest }, p.name) })) catch @panic("oom");
-            initfs_deps.append(b.allocator, &inst.step) catch @panic("oom");
-        }
-    }
-
-    // ---- app bundles -------------------------------------------------------------
-    for (apps) |app| {
-        const main_path = b.fmt("apps/{s}/main.zig", .{app.dir});
-        if (!exists(main_path) or skipped(skip, app.dir)) continue;
-        const contents = b.fmt("sysroot/{s}/{s}.app/Contents", .{ app.location, app.name });
-        const e = makeExe(b, zen_mods, app.exe, main_path, ui_deps, zen_target, optimize);
-        install.dependOn(&b.addInstallArtifact(e, .{ .dest_dir = .{ .override = .{ .custom = b.fmt("{s}/Bin", .{contents}) } } }).step);
-        install.dependOn(&b.addInstallDirectory(.{
-            .source_dir = b.path(b.fmt("apps/{s}/bundle", .{app.dir})),
-            .install_dir = .{ .custom = contents },
-            .install_subdir = "",
-        }).step);
-    }
-
-    // ---- static system files, fonts, examples -----------------------------------------
-    install.dependOn(&b.addInstallDirectory(.{
-        .source_dir = b.path("sysroot"),
-        .install_dir = .{ .custom = "sysroot" },
-        .install_subdir = "",
-        .exclude_extensions = &.{ "manifest.txt", "links.txt" },
-    }).step);
-    install.dependOn(&b.addInstallDirectory(.{
-        .source_dir = b.path("assets/fonts"),
-        .install_dir = .{ .custom = "sysroot/System/Library/Fonts" },
-        .install_subdir = "",
-    }).step);
-    install.dependOn(&b.addInstallDirectory(.{
-        .source_dir = b.path("examples"),
-        .install_dir = .{ .custom = "sysroot/usr/share/zen/examples" },
-        .install_subdir = "",
-    }).step);
-    if (toolchain) |tc| {
-        install.dependOn(&b.addInstallDirectory(.{
-            .source_dir = .{ .cwd_relative = tc },
-            .install_dir = .{ .custom = "sysroot/usr/lib/zig" },
-            .install_subdir = "",
-            .exclude_extensions = &.{ ".py", ".pyc" },
-        }).step);
-    }
+    addSystem(b, install, zen_mods, zen_target, optimize, .{
+        .prefix = "sysroot",
+        .hosted = false,
+        .skip = skip,
+        .toolchain = toolchain,
+        .initfs_specs = &initfs_specs,
+        .initfs_deps = &initfs_deps,
+    });
 
     // ---- host tools --------------------------------------------------------------
     const mkinitfs = makeExe(b, host_mods, "mkinitfs", "tools/mkinitfs.zig", &.{"abi"}, host_target, .ReleaseFast);
@@ -277,6 +306,48 @@ pub fn build(b: *std.Build) void {
     initfs.addArgs(initfs_specs.items);
     for (initfs_deps.items) |d| initfs.step.dependOn(d);
     image.dependOn(&initfs.step);
+
+    // ---- hosted: run Zen on Linux (or Docker), shown in a browser -------------------
+    const hosted_arch = b.option(std.Target.Cpu.Arch, "hosted-arch", "CPU of the hosted build (default: this machine)");
+    // Baseline CPU features: the result may run on another machine (Docker).
+    const hosted_target = b.resolveTargetQuery(.{ .cpu_arch = hosted_arch, .cpu_model = .baseline, .os_tag = .linux, .abi = .none });
+    const hosted_step = b.step("hosted", "Build Zen to run hosted on Linux or in Docker (zig-out/hosted)");
+    const hosted_files = b.allocator.create(std.Build.Step) catch @panic("oom");
+    hosted_files.* = std.Build.Step.init(.{ .id = .custom, .name = "hosted system root", .owner = b });
+    const hosted_mods = makeModules(b, hosted_target, .ReleaseFast);
+    addSystem(b, hosted_files, hosted_mods, hosted_target, .ReleaseFast, .{ .prefix = "hosted/root", .hosted = true, .skip = skip });
+    const hosted_root = b.getInstallPath(.{ .custom = "hosted/root" }, "");
+    const hprep = b.addRunArtifact(mkimage);
+    hprep.has_side_effects = true;
+    hprep.addArgs(&.{
+        "--root",     hosted_root,
+        "--keydir",   b.pathFromRoot("keys"),
+        "--manifest", b.pathFromRoot("sysroot/manifest.txt"),
+        "--links",    b.pathFromRoot("sysroot/links.txt"),
+        "--user",     "root:",
+        "--user",     "zen:zen",
+    });
+    if (exists("userland/zbox/main.zig") and !skipped(skip, "zbox")) {
+        const zbox_host = makeExe(b, host_mods, "zbox-host", "userland/zbox/main.zig", &.{}, host_target, .ReleaseFast);
+        const list = b.addRunArtifact(zbox_host);
+        list.addArg("--list");
+        hprep.addArg("--commands");
+        hprep.addFileArg(list.captureStdOut());
+        hprep.addArgs(&.{ "--commands-into", "usr/bin:zbox" });
+    }
+    hprep.step.dependOn(hosted_files);
+    hosted_step.dependOn(&hprep.step);
+    hosted_step.dependOn(&b.addInstallFile(b.path("hosted/Dockerfile"), "hosted/Dockerfile").step);
+    if (host_target.result.os.tag == .linux) {
+        const launcher = makeExe(b, host_mods, "zen-hosted", "tools/zen-hosted.zig", &.{}, host_target, .ReleaseFast);
+        hosted_step.dependOn(&b.addInstallArtifact(launcher, .{ .dest_dir = .{ .override = .{ .custom = "hosted" } } }).step);
+        const run_hosted = b.step("run-hosted", "Build and run hosted Zen, then open http://127.0.0.1:6080");
+        const run = b.addRunArtifact(launcher);
+        run.addArgs(&.{ "--root", hosted_root });
+        if (b.args) |args| run.addArgs(args);
+        run.step.dependOn(hosted_step);
+        run_hosted.dependOn(&run.step);
+    }
 
     // ---- previews ----------------------------------------------------------------
     const previews = b.step("previews", "Render desktop previews (PNG) on the host");

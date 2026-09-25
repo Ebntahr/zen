@@ -21,6 +21,8 @@ const gpa = gpa_state.allocator();
 const Service = struct {
     name: []const u8,
     restart: bool,
+    /// URLs that must answer before the service starts (`wait=<url>`).
+    waits: []const []const u8 = &.{},
     path: []const u8,
     args: []const []const u8,
     pid: u32 = 0,
@@ -37,6 +39,15 @@ const default_services =
     \\windowserver    always   /System/Library/Servers/windowserver
     \\loginwindow     always   /System/Library/CoreServices/loginwindow
     \\getty           always   /usr/sbin/getty debug:
+;
+
+/// Hosted on Linux: the display and input come from vncd (browser/VNC).
+const default_hosted_services =
+    \\# name          restart  [wait=<url>...] path [args...]
+    \\vncd            always   /System/Library/Servers/vncd
+    \\launchd         always   /System/Library/Servers/launchd
+    \\windowserver    always   wait=display:0 /System/Library/Servers/windowserver
+    \\loginwindow     always   wait=window:clipboard /System/Library/CoreServices/loginwindow
 ;
 
 fn log(comptime fmt: []const u8, args: anytype) void {
@@ -74,8 +85,8 @@ fn spawnDaemon(path: []const u8, args: []const []const u8) !u32 {
 fn waitForScheme(url: []const u8, timeout_ms: u64) bool {
     const deadline = nowNs() + timeout_ms * std.time.ns_per_ms;
     while (nowNs() < deadline) {
-        if (posix.open(url, .{ .ACCMODE = .RDONLY }, 0)) |fd| {
-            posix.close(fd);
+        if (zen.io.open(url, .{ .ACCMODE = .RDONLY }, 0)) |fd| {
+            zen.io.close(fd);
             return true;
         } else |_| {}
         std.Thread.sleep(20 * std.time.ns_per_ms);
@@ -157,8 +168,9 @@ fn mountRoot() bool {
     return true;
 }
 
-fn loadServices() !void {
-    const text = std.fs.cwd().readFileAlloc(gpa, "/etc/zen/services.conf", 64 * 1024) catch try gpa.dupe(u8, default_services);
+fn loadServices(hosted: bool) !void {
+    const conf = if (hosted) "/etc/zen/services.hosted.conf" else "/etc/zen/services.conf";
+    const text = std.fs.cwd().readFileAlloc(gpa, conf, 64 * 1024) catch try gpa.dupe(u8, if (hosted) default_hosted_services else default_services);
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \t\r");
@@ -166,12 +178,19 @@ fn loadServices() !void {
         var it = std.mem.tokenizeAny(u8, line, " \t");
         const name = it.next() orelse continue;
         const restart = it.next() orelse continue;
-        const path = it.next() orelse continue;
+        var waits: std.ArrayList([]const u8) = .empty;
+        var path = it.next() orelse continue;
+        while (std.mem.startsWith(u8, path, "wait=")) {
+            try waits.append(gpa, path["wait=".len..]);
+            path = it.next() orelse break;
+        }
+        if (std.mem.startsWith(u8, path, "wait=")) continue;
         var args: std.ArrayList([]const u8) = .empty;
         while (it.next()) |a| try args.append(gpa, a);
         try services.append(gpa, .{
             .name = name,
             .restart = std.mem.eql(u8, restart, "always"),
+            .waits = try waits.toOwnedSlice(gpa),
             .path = path,
             .args = try args.toOwnedSlice(gpa),
         });
@@ -188,6 +207,9 @@ fn startService(s: *Service) void {
     }
     s.last_start_ns = now;
     s.starts += 1;
+    for (s.waits) |url| {
+        if (!waitForScheme(url, 15000)) log("{s}: {s} did not appear; starting anyway", .{ s.name, url });
+    }
     s.pid = spawnDaemon(s.path, s.args) catch |err| {
         log("cannot start {s}: {s}", .{ s.name, @errorName(err) });
         s.pid = 0;
@@ -200,13 +222,113 @@ fn emergencyShell() void {
     log("starting emergency shell on the console", .{});
     for ([_][]const u8{ "/bin/zensh", "initfs:/bin/zensh" }) |sh| {
         const pid = zen.sys.spawn(gpa, sh, .{ .argv = &.{ sh, "-i" }, .env = &base_env, .new_session = true }) catch continue;
-        _ = posix.waitpid(@intCast(pid), 0);
+        _ = zen.sys.reap(@intCast(pid), true);
         return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hosted on Linux (zen-hosted / Docker)
+// ---------------------------------------------------------------------------
+
+var hosted_signal = std.atomic.Value(u8).init(0);
+
+fn onSignal(sig: i32) callconv(.c) void {
+    hosted_signal.store(@intCast(sig), .release);
+}
+
+/// Apply /etc/zen/manifest.txt (mode, owner) when running as root.
+fn applyManifest() void {
+    if (std.os.linux.geteuid() != 0) return;
+    const text = std.fs.cwd().readFileAlloc(gpa, "/etc/zen/manifest.txt", 256 * 1024) catch return;
+    defer gpa.free(text);
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        var it = std.mem.tokenizeAny(u8, line, " \t");
+        const path = it.next() orelse continue;
+        const mode = std.fmt.parseInt(u32, it.next() orelse continue, 8) catch continue;
+        const uid = std.fmt.parseInt(u32, it.next() orelse continue, 10) catch continue;
+        const gid = std.fmt.parseInt(u32, it.next() orelse continue, 10) catch continue;
+        const z = gpa.dupeZ(u8, path) catch continue;
+        defer gpa.free(z);
+        const linux = std.os.linux;
+        const fdcwd: usize = @bitCast(@as(isize, linux.AT.FDCWD));
+        _ = linux.syscall5(.fchownat, fdcwd, @intFromPtr(z.ptr), uid, gid, linux.AT.SYMLINK_NOFOLLOW);
+        _ = linux.syscall4(.fchmodat, fdcwd, @intFromPtr(z.ptr), mode, 0);
+    }
+}
+
+fn hostedSetup() void {
+    const dir = zen.hosted.dir().?;
+    std.fs.cwd().makePath(dir) catch {};
+    var buf: [256]u8 = undefined;
+    if (std.fmt.bufPrint(&buf, "{s}/init.pid", .{dir})) |p| {
+        var pid_buf: [16]u8 = undefined;
+        const text = std.fmt.bufPrint(&pid_buf, "{d}\n", .{std.os.linux.getpid()}) catch "";
+        std.fs.cwd().writeFile(.{ .sub_path = p, .data = text }) catch {};
+    } else |_| {}
+    applyManifest();
+    const act = posix.Sigaction{ .handler = .{ .handler = onSignal }, .mask = posix.sigemptyset(), .flags = 0 };
+    posix.sigaction(posix.SIG.TERM, &act, null);
+    posix.sigaction(posix.SIG.INT, &act, null);
+    posix.sigaction(posix.SIG.HUP, &act, null);
+}
+
+fn stopServices() void {
+    for (services.items) |*s| if (s.pid != 0) posix.kill(@intCast(s.pid), posix.SIG.TERM) catch {};
+    std.Thread.sleep(700 * std.time.ns_per_ms);
+    for (services.items) |*s| if (s.pid != 0) posix.kill(@intCast(s.pid), posix.SIG.KILL) catch {};
+    // Reap everything (apps started by launchd are reparented to us).
+    while (zen.sys.reap(-1, false) != null) {}
+    for (services.items) |*s| s.pid = 0;
+}
+
+fn hostedLoop() noreturn {
+    while (true) {
+        switch (hosted_signal.swap(0, .acq_rel)) {
+            0 => {},
+            posix.SIG.HUP => {
+                log("restarting", .{});
+                stopServices();
+                for (services.items) |*s| {
+                    s.starts = 0;
+                    s.restart = true;
+                    startService(s);
+                }
+            },
+            else => {
+                log("shutting down", .{});
+                stopServices();
+                std.process.exit(0);
+            },
+        }
+        const r = zen.sys.reap(-1, false) orelse {
+            std.Thread.sleep(50 * std.time.ns_per_ms);
+            continue;
+        };
+        const pid = r.pid;
+        for (services.items) |*s| {
+            if (s.pid != pid) continue;
+            log("{s} (pid {d}) exited with status {d}", .{ s.name, pid, r.status });
+            s.pid = 0;
+            if (s.restart) startService(s);
+        }
     }
 }
 
 pub fn main() !void {
     zen.sys.setName("init");
+    if (zen.sys.isHosted()) {
+        log("Zen OS {s} \"{s}\" starting (hosted)", .{ abi.os_version, abi.os_codename });
+        hostedSetup();
+        posix.chdir("/") catch {};
+        for ([_][]const u8{ "/tmp", "/var/run", "/var/log", "/var/cache/zen" }) |d| std.fs.cwd().makePath(d) catch {};
+        try loadServices(true);
+        for (services.items) |*s| startService(s);
+        hostedLoop();
+    }
     // stdio on the kernel console
     if (posix.open("debug:", .{ .ACCMODE = .RDWR }, 0)) |fd| {
         for ([_]i32{ 0, 1, 2 }) |t| if (fd != t) {
@@ -224,16 +346,15 @@ pub fn main() !void {
     // Volatile directories.
     for ([_][]const u8{ "/tmp", "/var/run", "/var/log" }) |d| std.fs.cwd().makePath(d) catch {};
 
-    try loadServices();
+    try loadServices(false);
     for (services.items) |*s| startService(s);
 
     while (true) {
-        const r = posix.waitpid(-1, 0);
-        if (r.pid <= 0) {
+        const r = zen.sys.reap(-1, true) orelse {
             std.Thread.sleep(100 * std.time.ns_per_ms);
             continue;
-        }
-        const pid: u32 = @intCast(r.pid);
+        };
+        const pid = r.pid;
         for (services.items) |*s| {
             if (s.pid != pid) continue;
             log("{s} (pid {d}) exited with status {d}", .{ s.name, pid, r.status });

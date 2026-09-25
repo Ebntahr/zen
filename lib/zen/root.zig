@@ -6,6 +6,9 @@ pub const url = @import("url.zig");
 pub const users = @import("users.zig");
 pub const bundle = @import("bundle.zig");
 pub const codesign = @import("codesign.zig");
+pub const io = @import("io.zig");
+pub const hosted = @import("hosted.zig");
+pub const shm = @import("shm.zig");
 
 test {
     _ = sys;
@@ -14,4 +17,7 @@ test {
     _ = users;
     _ = bundle;
     _ = codesign;
+    _ = io;
+    _ = hosted;
+    _ = shm;
 }

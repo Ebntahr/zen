@@ -15,6 +15,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const sys = @import("sys.zig");
+const hosted = @import("hosted.zig");
 const posix = std.posix;
 const linux = std.os.linux;
 
@@ -34,8 +35,14 @@ pub const Server = struct {
     fd: posix.fd_t,
     buf: []align(8) u8,
     out: std.ArrayList(u8) = .empty,
+    /// Hosted on Linux: the socket endpoint standing in for the kernel.
+    endpoint: ?*hosted.Endpoint = null,
 
     pub fn register(allocator: std.mem.Allocator, name: []const u8) !Server {
+        if (hosted.enabled()) {
+            const ep = try hosted.Endpoint.listen(allocator, name);
+            return .{ .allocator = allocator, .fd = ep.fd, .buf = &.{}, .endpoint = ep };
+        }
         const fd = try sys.schemeRegister(name);
         return fromFd(allocator, fd);
     }
@@ -46,13 +53,23 @@ pub const Server = struct {
     }
 
     pub fn deinit(self: *Server) void {
+        if (self.endpoint) |ep| {
+            ep.deinit();
+            self.out.deinit(self.allocator);
+            return;
+        }
         self.allocator.free(self.buf);
         self.out.deinit(self.allocator);
         posix.close(self.fd);
     }
 
-    /// Block until the next request arrives.
+    /// Block until the next request arrives. (Hosted: returns
+    /// error.WouldBlock when nothing is pending; poll `fd` first.)
     pub fn receive(self: *Server) !Incoming {
+        if (self.endpoint) |ep| {
+            const in = try ep.receive();
+            return .{ .req = in.req, .payload = in.payload };
+        }
         while (true) {
             const n = posix.read(self.fd, self.buf) catch |err| switch (err) {
                 error.WouldBlock => return error.WouldBlock,
@@ -70,6 +87,7 @@ pub const Server = struct {
 
     /// Send one response with optional data.
     pub fn reply(self: *Server, id: u64, result: i64, data: []const u8) !void {
+        if (self.endpoint) |ep| return ep.reply(id, result, data);
         self.out.clearRetainingCapacity();
         const hdr = Response{ .id = id, .result = result, .len = data.len };
         try self.out.appendSlice(self.allocator, std.mem.asBytes(&hdr));

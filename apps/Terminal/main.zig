@@ -103,7 +103,7 @@ fn run(gpa: std.mem.Allocator, app: *App, win: *ui.Window, pty: *Pty) void {
 
         fds[0].revents = 0;
         fds[1].revents = 0;
-        _ = posix.poll(&fds, timeout) catch continue;
+        _ = zen.io.poll(&fds, timeout) catch continue;
 
         if (fds[0].revents != 0) {
             const events = win.waitEvents(0);
@@ -159,7 +159,7 @@ fn openNewWindow(gpa: std.mem.Allocator) void {
     var env: std.ArrayList([]const u8) = .empty;
     defer env.deinit(gpa);
     for (std.os.environ) |e| env.append(gpa, std.mem.span(e)) catch return;
-    const devnull = posix.open("null:", .{ .ACCMODE = .RDWR }, 0) catch -1;
+    const devnull = zen.io.open("null:", .{ .ACCMODE = .RDWR }, 0) catch -1;
     defer if (devnull >= 0) posix.close(devnull);
     _ = zen.sys.spawn(gpa, exe, .{
         .argv = &.{exe},

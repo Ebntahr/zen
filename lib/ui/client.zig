@@ -8,6 +8,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const posix = std.posix;
+const zio = @import("zen").io;
 const proto = abi.window;
 
 pub const Event = proto.Event;
@@ -51,7 +52,7 @@ pub const Window = struct {
         if (opts.x) |x| try w.print("&x={d}", .{x});
         if (opts.y) |y| try w.print("&y={d}", .{y});
 
-        const fd = posix.open(fbs.getWritten(), .{ .ACCMODE = .RDWR }, 0) catch {
+        const fd = zio.open(fbs.getWritten(), .{ .ACCMODE = .RDWR }, 0) catch {
             return openHeadless(allocator, opts);
         };
         var win = Window{
@@ -84,7 +85,7 @@ pub const Window = struct {
 
     fn mapBuffer(self: *Window) !void {
         const len: usize = @intCast(self.width * self.height * 4);
-        const mapped = try posix.mmap(null, std.mem.alignForward(usize, len, 4096), posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .SHARED }, self.fd, 0);
+        const mapped = try zio.mmap(self.fd, std.mem.alignForward(usize, len, 4096), posix.PROT.READ | posix.PROT.WRITE, 0);
         const words: [*]align(4096) u32 = @ptrCast(@alignCast(mapped.ptr));
         self.pixels = words[0..@intCast(self.width * self.height)];
     }
@@ -102,7 +103,7 @@ pub const Window = struct {
 
     pub fn close(self: *Window) void {
         self.unmapBuffer();
-        if (!self.headless) posix.close(self.fd);
+        if (!self.headless) zio.close(self.fd);
         self.cmd_buf.deinit(self.allocator);
     }
 
@@ -118,7 +119,7 @@ pub const Window = struct {
         if (self.headless or self.cmd_buf.items.len == 0) return;
         var off: usize = 0;
         while (off < self.cmd_buf.items.len) {
-            off += posix.write(self.fd, self.cmd_buf.items[off..]) catch break;
+            off += zio.write(self.fd, self.cmd_buf.items[off..]) catch break;
         }
         self.cmd_buf.clearRetainingCapacity();
     }
@@ -187,11 +188,11 @@ pub const Window = struct {
         self.flush();
         if (timeout_ms >= 0) {
             var fds = [_]posix.pollfd{.{ .fd = self.fd, .events = posix.POLL.IN, .revents = 0 }};
-            const n = posix.poll(&fds, timeout_ms) catch 0;
+            const n = zio.poll(&fds, timeout_ms) catch 0;
             if (n == 0) return self.events[0..0];
         }
         const bytes = std.mem.sliceAsBytes(&self.events);
-        const got = posix.read(self.fd, bytes) catch return self.events[0..0];
+        const got = zio.read(self.fd, bytes) catch return self.events[0..0];
         const count = got / @sizeOf(Event);
         for (self.events[0..count]) |e| {
             if (e.kind == .resize and (e.a != self.width or e.b != self.height)) {
@@ -212,21 +213,11 @@ pub const Window = struct {
 
 /// Read the clipboard (UTF-8). Caller frees.
 pub fn clipboardGet(allocator: std.mem.Allocator) ![]u8 {
-    const fd = try posix.open("window:clipboard", .{ .ACCMODE = .RDONLY }, 0);
-    defer posix.close(fd);
-    var list: std.ArrayList(u8) = .empty;
-    var buf: [4096]u8 = undefined;
-    while (true) {
-        const n = try posix.read(fd, &buf);
-        if (n == 0) break;
-        try list.appendSlice(allocator, buf[0..n]);
-    }
-    return list.toOwnedSlice(allocator);
+    return zio.readUrl(allocator, "window:clipboard", 16 << 20);
 }
 
 pub fn clipboardSet(text: []const u8) !void {
-    const fd = try posix.open("window:clipboard", .{ .ACCMODE = .WRONLY, .TRUNC = true }, 0);
-    defer posix.close(fd);
-    var off: usize = 0;
-    while (off < text.len) off += try posix.write(fd, text[off..]);
+    const fd = try zio.open("window:clipboard", .{ .ACCMODE = .WRONLY, .TRUNC = true }, 0);
+    defer zio.close(fd);
+    try zio.writeAll(fd, text);
 }

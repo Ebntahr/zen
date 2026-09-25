@@ -540,13 +540,13 @@ pub fn freeBytes(path: []const u8) ?u64 {
 
 /// Send a command to launchd (`launch:ctl`) and return its reply line.
 pub fn launchCtl(cmd: []const u8, reply: []u8) ![]const u8 {
-    const fd = posix.open("launch:ctl", .{ .ACCMODE = .RDWR }, 0) catch return error.LaunchServiceUnavailable;
-    defer posix.close(fd);
-    var off: usize = 0;
-    while (off < cmd.len) off += try posix.write(fd, cmd[off..]);
+    const zio = @import("zen").io;
+    const fd = zio.open("launch:ctl", .{ .ACCMODE = .RDWR }, 0) catch return error.LaunchServiceUnavailable;
+    defer zio.close(fd);
+    try zio.writeAll(fd, cmd);
     var n: usize = 0;
     while (n < reply.len) {
-        const got = posix.read(fd, reply[n..]) catch break;
+        const got = zio.read(fd, reply[n..]) catch break;
         if (got == 0) break;
         n += got;
         if (std.mem.indexOfScalar(u8, reply[0..n], '\n') != null) break;

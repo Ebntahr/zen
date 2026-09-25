@@ -7,7 +7,17 @@
 > desktop libraries, shell, tools) is written and tested on the host, and it
 > cross-compiles for riscv64. However, the kernel's memory management, trap
 > handling, scheduler and system calls are **not written yet**, so the image
-> does **not boot** today. See [Status](#status--الحالة).
+> does **not boot** today. See [Status](#status--الحالة). Until then, the
+> whole desktop runs hosted on Linux: `zig build run-hosted`.
+
+> 🖥️ **Try it now / جرّبه الآن** — the real Zen desktop runs *hosted* on
+> Linux (or Docker) and appears in your browser:
+>
+> ```sh
+> zig build run-hosted        # then open http://127.0.0.1:6080  (user zen, password zen)
+> ```
+>
+> Docker, VNC viewers and details: [docs/HOSTED.md](docs/HOSTED.md).
 
 ![Zen OS desktop](docs/screenshots/desktop-light.jpg)
 
@@ -22,10 +32,10 @@
 </tr>
 </table>
 
-<sub>These are host renders, made by `zig build previews` and each app's
-`preview.zig`. They run the real window-server compositor and the apps' own
-drawing code headless, because the system does not boot yet.
-الصور مولَّدة على جهاز التطوير بنفس كود المُركِّب والتطبيقات، لأن النظام لا يُقلع بعد.</sub>
+<sub>The desktop screenshot above was rendered headless by `zig build
+previews`. The same programs run interactively with `zig build run-hosted`
+(see [docs/HOSTED.md](docs/HOSTED.md)).
+الصور مولَّدة بنفس كود المُركِّب والتطبيقات، ويمكن تشغيل سطح المكتب نفسه تفاعلياً في المتصفح عبر `zig build run-hosted`.</sub>
 
 ---
 
@@ -144,6 +154,7 @@ zig c++ -target riscv64-linux-musl -static examples/cpp/hello.cpp -o hello-cpp
 | `drivers/`, `servers/` | user-space drivers and system servers |
 | `userland/` | shell, coreutils, account tools, getty, C/C++ driver |
 | `apps/` | desktop app bundles |
+| `hosted/` | hosted Zen: `vncd` (display/input for browsers and VNC viewers), Dockerfile, smoke test |
 | `sysroot/` | files installed into the root disk |
 | `tools/` | host tools: boot archive, image preparation, code signing |
 | `legacy/` | the original i386 Zen kernel |

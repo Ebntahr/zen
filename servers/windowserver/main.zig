@@ -17,6 +17,7 @@ const chrome = @import("chrome.zig");
 const cursor = @import("cursor.zig");
 
 const posix = std.posix;
+const zio = zen.io;
 const disp = abi.display;
 
 var gpa_state: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -47,7 +48,7 @@ fn setCursor(x: i32, y: i32, shape: abi.window.Cursor) void {
     }
     cmd.hot_x = cursor_hot.x;
     cmd.hot_y = cursor_hot.y;
-    _ = posix.write(cursor_fd, std.mem.asBytes(&cmd)) catch {};
+    _ = zio.write(cursor_fd, std.mem.asBytes(&cmd)) catch {};
 }
 
 fn postNotification(s: *st.State, title: []const u8, body: []const u8) void {
@@ -66,25 +67,84 @@ fn notifyHook(s: *st.State, pid: u32, title: []const u8, body: []const u8) void 
     postNotification(s, title, body);
 }
 
-fn launch(s: *st.State, id: []const u8) void {
-    if (std.mem.eql(u8, id, "spotlight")) return;
-    if (std.mem.eql(u8, id, "trash")) return launch(s, "com.zen.Finder");
-    const fd = posix.open("launch:ctl", .{ .ACCMODE = .RDWR }, 0) catch {
-        postNotification(s, "Cannot open application", "The launch service is not running.");
-        return;
-    };
-    defer posix.close(fd);
-    var buf: [256]u8 = undefined;
-    const cmd = std.fmt.bufPrint(&buf, "open {s}", .{id}) catch return;
-    _ = posix.write(fd, cmd) catch return;
-    var reply: [256]u8 = undefined;
-    const n = posix.read(fd, &reply) catch 0;
-    const r = std.mem.trim(u8, reply[0..n], " \r\n");
-    if (std.mem.startsWith(u8, r, "error gatekeeper")) {
-        postNotification(s, "Application blocked", r["error gatekeeper ".len..]);
-    } else if (std.mem.startsWith(u8, r, "error")) {
-        postNotification(s, "Cannot open application", r[@min(r.len, 6)..]);
+// Apps are opened from a separate thread: launchd verifies signatures and
+// then calls back into the window server ("app-launched"), so waiting for
+// it here would freeze the desktop or deadlock.
+const Launcher = struct {
+    const Note = struct { title: []u8, body: []u8 };
+    var mutex: std.Thread.Mutex = .{};
+    var cond: std.Thread.Condition = .{};
+    var requests: std.ArrayList([]u8) = .empty;
+    var notes: std.ArrayList(Note) = .empty;
+    /// Written by the thread to wake the main loop.
+    var wake: [2]posix.fd_t = .{ -1, -1 };
+
+    fn start() void {
+        wake = posix.pipe2(.{ .NONBLOCK = true, .CLOEXEC = true }) catch return;
+        const t = std.Thread.spawn(.{}, run, .{}) catch return;
+        t.detach();
     }
+
+    fn open(id: []const u8) void {
+        mutex.lock();
+        defer mutex.unlock();
+        const copy = gpa.dupe(u8, id) catch return;
+        requests.append(gpa, copy) catch return gpa.free(copy);
+        cond.signal();
+    }
+
+    fn note(title: []const u8, body: []const u8) void {
+        mutex.lock();
+        const t = gpa.dupe(u8, title) catch "";
+        const b = gpa.dupe(u8, body) catch "";
+        notes.append(gpa, .{ .title = @constCast(t), .body = @constCast(b) }) catch {};
+        mutex.unlock();
+        _ = posix.write(wake[1], "x") catch {};
+    }
+
+    fn run() void {
+        while (true) {
+            mutex.lock();
+            while (requests.items.len == 0) cond.wait(&mutex);
+            const id = requests.orderedRemove(0);
+            mutex.unlock();
+            defer gpa.free(id);
+            var buf: [256]u8 = undefined;
+            const cmd = std.fmt.bufPrint(&buf, "open {s}", .{id}) catch continue;
+            var reply: [256]u8 = undefined;
+            const got = zio.transact("launch:ctl", cmd, &reply) catch {
+                note("Cannot open application", "The launch service is not running.");
+                continue;
+            };
+            const r = std.mem.trim(u8, got, " \r\n");
+            if (std.mem.startsWith(u8, r, "error gatekeeper")) {
+                note("Application blocked", r["error gatekeeper ".len..]);
+            } else if (std.mem.startsWith(u8, r, "error")) {
+                note("Cannot open application", r[@min(r.len, 6)..]);
+            }
+        }
+    }
+
+    /// Main loop: show notifications the thread produced.
+    fn drain(s: *st.State) void {
+        var junk: [64]u8 = undefined;
+        while (true) _ = posix.read(wake[0], &junk) catch break;
+        mutex.lock();
+        defer mutex.unlock();
+        for (notes.items) |n| {
+            postNotification(s, n.title, n.body);
+            gpa.free(n.title);
+            gpa.free(n.body);
+        }
+        notes.clearRetainingCapacity();
+    }
+};
+
+fn launch(s: *st.State, id: []const u8) void {
+    _ = s;
+    if (std.mem.eql(u8, id, "spotlight")) return;
+    if (std.mem.eql(u8, id, "trash")) return Launcher.open("com.zen.Finder");
+    Launcher.open(id);
 }
 
 fn screenshot(s: *st.State) void {
@@ -236,27 +296,27 @@ fn controlHook(s: *st.State, uid: u32, line: []const u8) void {
 
 fn present(r: gfx.Rect) void {
     const dr = disp.Rect{ .x = @intCast(r.x), .y = @intCast(r.y), .w = @intCast(r.w), .h = @intCast(r.h) };
-    _ = posix.write(display_fd, std.mem.asBytes(&dr)) catch {};
+    _ = zio.write(display_fd, std.mem.asBytes(&dr)) catch {};
 }
 
 pub fn main() !void {
     zen.sys.setName("windowserver");
 
     // Display.
-    display_fd = try posix.open("display:0", .{ .ACCMODE = .RDWR }, 0);
+    display_fd = try zio.open("display:0", .{ .ACCMODE = .RDWR }, 0);
     var info: disp.Info = undefined;
-    _ = try posix.read(display_fd, std.mem.asBytes(&info));
+    _ = try zio.read(display_fd, std.mem.asBytes(&info));
     const fb_bytes = std.mem.alignForward(usize, @as(usize, info.stride) * info.height, 4096);
-    const fb_mem = try posix.mmap(null, fb_bytes, posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .SHARED }, display_fd, 0);
+    const fb_mem = try zio.mmap(display_fd, fb_bytes, posix.PROT.READ | posix.PROT.WRITE, 0);
     const fb_px: [*]u32 = @ptrCast(@alignCast(fb_mem.ptr));
     const w: i32 = @intCast(info.width);
     const h: i32 = @intCast(info.height);
 
     // Hardware cursor.
-    cursor_fd = posix.open("display:0/cursor", .{ .ACCMODE = .RDWR }, 0) catch -1;
+    cursor_fd = zio.open("display:0/cursor", .{ .ACCMODE = .RDWR }, 0) catch -1;
     if (cursor_fd >= 0) {
         const cbytes = std.mem.alignForward(usize, cursor.SIZE * cursor.SIZE * 4, 4096);
-        const cm = try posix.mmap(null, cbytes, posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .SHARED }, cursor_fd, 0);
+        const cm = try zio.mmap(cursor_fd, cbytes, posix.PROT.READ | posix.PROT.WRITE, 0);
         cursor_img = @as([*]u32, @ptrCast(@alignCast(cm.ptr)))[0 .. cursor.SIZE * cursor.SIZE];
     }
 
@@ -277,7 +337,8 @@ pub fn main() !void {
         .proto = &proto,
         .actions = .{ .set_cursor = setCursor, .launch = launch, .session = sessionMessage, .screenshot = screenshot },
     };
-    const input_fd = posix.open("input:", .{ .ACCMODE = .RDONLY }, 0) catch -1;
+    const input_fd = zio.open("input:", .{ .ACCMODE = .RDONLY }, 0) catch -1;
+    Launcher.start();
 
     zen.sys.logf("windowserver: {d}x{d}", .{ w, h });
     state.invalidateAll();
@@ -294,14 +355,16 @@ pub fn main() !void {
         };
         var fds = [_]posix.pollfd{
             .{ .fd = proto.srv.fd, .events = posix.POLL.IN, .revents = 0 },
+            .{ .fd = Launcher.wake[0], .events = posix.POLL.IN, .revents = 0 },
             .{ .fd = input_fd, .events = posix.POLL.IN, .revents = 0 },
         };
-        const nfds: usize = if (input_fd >= 0) 2 else 1;
-        _ = posix.poll(fds[0..nfds], timeout) catch 0;
+        const nfds: usize = if (input_fd >= 0) 3 else 2;
+        _ = zio.poll(fds[0..nfds], timeout) catch 0;
         state.now_ms = nowMs();
+        if (fds[1].revents & posix.POLL.IN != 0) Launcher.drain(&state);
 
-        if (nfds > 1 and fds[1].revents & posix.POLL.IN != 0) {
-            const n = posix.read(input_fd, std.mem.sliceAsBytes(&ev_buf)) catch 0;
+        if (nfds > 2 and fds[2].revents & posix.POLL.IN != 0) {
+            const n = zio.read(input_fd, std.mem.sliceAsBytes(&ev_buf)) catch 0;
             in.feed(ev_buf[0 .. n / @sizeOf(abi.input.InputEvent)]);
         }
         if (fds[0].revents & posix.POLL.IN != 0) {

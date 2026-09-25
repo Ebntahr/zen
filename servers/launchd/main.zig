@@ -214,8 +214,8 @@ fn launch(key: []const u8, extra_args: []const []const u8, reply: *std.ArrayList
     try env.append(arena, "TERM=xterm-256color");
     try env.append(arena, "LANG=en_US.UTF-8");
 
-    const devnull = posix.open("null:", .{ .ACCMODE = .RDWR }, 0) catch -1;
-    defer if (devnull >= 0) posix.close(devnull);
+    const devnull = zen.io.open("null:", .{ .ACCMODE = .RDWR }, 0) catch -1;
+    defer if (devnull >= 0) zen.io.close(devnull);
     const pid = zen.sys.spawn(gpa, exe, .{
         .argv = argv.items,
         .env = env.items,
@@ -236,19 +236,55 @@ fn launch(key: []const u8, extra_args: []const []const u8, reply: *std.ArrayList
     try reply.print(gpa, "ok {d}\n", .{pid});
 }
 
+// Notifications to the window server are sent from a separate thread: the
+// window server may itself be waiting on launchd (Dock → "open …"), and a
+// synchronous call back into it from here would deadlock.
+const Notifier = struct {
+    var mutex: std.Thread.Mutex = .{};
+    var cond: std.Thread.Condition = .{};
+    var queue: std.ArrayList([]u8) = .empty;
+    var started = false;
+
+    fn post(msg: []const u8) void {
+        mutex.lock();
+        defer mutex.unlock();
+        if (!started) {
+            started = true;
+            const t = std.Thread.spawn(.{}, run, .{}) catch {
+                started = false;
+                return;
+            };
+            t.detach();
+        }
+        const copy = gpa.dupe(u8, msg) catch return;
+        queue.append(gpa, copy) catch return gpa.free(copy);
+        cond.signal();
+    }
+
+    fn run() void {
+        while (true) {
+            mutex.lock();
+            while (queue.items.len == 0) cond.wait(&mutex);
+            const msg = queue.orderedRemove(0);
+            mutex.unlock();
+            defer gpa.free(msg);
+            const fd = zen.io.open("window:control", .{ .ACCMODE = .WRONLY }, 0) catch continue;
+            defer zen.io.close(fd);
+            _ = zen.io.write(fd, msg) catch {};
+        }
+    }
+};
+
 fn notifyWindowServer(what: []const u8, pid: u32, id: []const u8) void {
-    const fd = posix.open("window:control", .{ .ACCMODE = .WRONLY }, 0) catch return;
-    defer posix.close(fd);
     var buf: [256]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf, "{s} {d} {s}", .{ what, pid, id }) catch return;
-    _ = posix.write(fd, msg) catch {};
+    Notifier.post(msg);
 }
 
 fn reapChildren() void {
     while (true) {
-        const r = posix.waitpid(-1, std.os.linux.W.NOHANG);
-        if (r.pid <= 0) break;
-        const pid: u32 = @intCast(r.pid);
+        const r = zen.sys.reap(-1, false) orelse break;
+        const pid = r.pid;
         for (running.items, 0..) |app, i| {
             if (app.pid == pid) {
                 zen.sys.logf("launchd: {s} (pid {d}) exited", .{ app.id, pid });

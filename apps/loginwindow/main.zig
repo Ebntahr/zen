@@ -13,19 +13,23 @@ const ui = @import("ui");
 const login_mod = @import("login.zig");
 
 const posix = std.posix;
+const zio = zen.io;
 const users = zen.users;
 
 var gpa_state: std.heap.GeneralPurposeAllocator(.{}) = .init;
 const gpa = gpa_state.allocator();
 
 fn writeTo(url: []const u8, msg: []const u8) []const u8 {
-    const fd = posix.open(url, .{ .ACCMODE = .RDWR }, 0) catch return "error unavailable";
-    defer posix.close(fd);
-    _ = posix.write(fd, msg) catch return "error write";
+    const fd = zio.open(url, .{ .ACCMODE = .RDWR }, 0) catch return "error unavailable";
+    defer zio.close(fd);
+    _ = zio.write(fd, msg) catch return "error write";
     const S = struct {
         var buf: [256]u8 = undefined;
     };
-    const n = posix.read(fd, &S.buf) catch 0;
+    // window:control replies with nothing (a read would wait for session
+    // messages), launch:ctl with a status line.
+    if (std.mem.startsWith(u8, url, "window:")) return "ok";
+    const n = zio.read(fd, &S.buf) catch 0;
     return std.mem.trim(u8, S.buf[0..n], " \r\n");
 }
 
@@ -104,7 +108,7 @@ pub fn main() !void {
     loadUsers(&l);
     l.mode = if (l.users.len == 0) .setup else .login;
 
-    const control = posix.open("window:control", .{ .ACCMODE = .RDWR }, 0) catch -1;
+    const control = zio.open("window:control", .{ .ACCMODE = .RDWR }, 0) catch -1;
     var session: ?Session = null;
     var shown = true;
 
@@ -117,11 +121,11 @@ pub fn main() !void {
                 .{ .fd = control, .events = posix.POLL.IN, .revents = 0 },
             };
             const timeout: i32 = if (u.want_frame) 30 else if (shown) 15_000 else -1;
-            _ = posix.poll(fds[0..if (control >= 0) 2 else 1], timeout) catch 0;
+            _ = zio.poll(fds[0..if (control >= 0) 2 else 1], timeout) catch 0;
             if (fds[0].revents & posix.POLL.IN != 0) events = win.waitEvents(0);
             if (control >= 0 and fds[1].revents & posix.POLL.IN != 0) {
                 var buf: [256]u8 = undefined;
-                const n = posix.read(control, &buf) catch 0;
+                const n = zio.read(control, &buf) catch 0;
                 var lines = std.mem.tokenizeScalar(u8, buf[0..n], '\n');
                 while (lines.next()) |msg| {
                     if (std.mem.eql(u8, msg, "lock") and session != null) {

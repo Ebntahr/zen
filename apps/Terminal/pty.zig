@@ -111,7 +111,7 @@ pub const Pty = struct {
         posix.close(self.master);
         if (!self.on_zen and self.pid > 0) {
             posix.kill(self.pid, posix.SIG.HUP) catch {};
-            _ = posix.waitpid(self.pid, posix.W.NOHANG);
+            _ = zen.sys.reap(@intCast(self.pid), false);
         }
     }
 };

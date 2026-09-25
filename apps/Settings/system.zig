@@ -8,14 +8,15 @@
 const std = @import("std");
 const posix = std.posix;
 const linux = std.os.linux;
+const zio = @import("zen").io;
 
 /// Read a small file (or URL) into `buf`; null when it cannot be read.
 pub fn readSmall(path: []const u8, buf: []u8) ?[]const u8 {
-    const fd = posix.open(path, .{ .ACCMODE = .RDONLY }, 0) catch return null;
-    defer posix.close(fd);
+    const fd = zio.open(path, .{ .ACCMODE = .RDONLY }, 0) catch return null;
+    defer zio.close(fd);
     var n: usize = 0;
     while (n < buf.len) {
-        const got = posix.read(fd, buf[n..]) catch break;
+        const got = zio.read(fd, buf[n..]) catch break;
         if (got == 0) break;
         n += got;
     }
@@ -24,12 +25,12 @@ pub fn readSmall(path: []const u8, buf: []u8) ?[]const u8 {
 
 /// Read a whole file (or URL). Caller frees.
 pub fn readAll(allocator: std.mem.Allocator, path: []const u8, max: usize) ?[]u8 {
-    const fd = posix.open(path, .{ .ACCMODE = .RDONLY }, 0) catch return null;
-    defer posix.close(fd);
+    const fd = zio.open(path, .{ .ACCMODE = .RDONLY }, 0) catch return null;
+    defer zio.close(fd);
     var list: std.ArrayList(u8) = .empty;
     var buf: [4096]u8 = undefined;
     while (list.items.len < max) {
-        const got = posix.read(fd, &buf) catch break;
+        const got = zio.read(fd, &buf) catch break;
         if (got == 0) break;
         list.appendSlice(allocator, buf[0..got]) catch break;
     }
@@ -194,9 +195,9 @@ fn dirSizeIn(dir: std.fs.Dir, budget: *usize, depth: u32) u64 {
 
 /// Send one text command to the window server (`window:control`).
 pub fn control(cmd: []const u8) bool {
-    const fd = posix.open("window:control", .{ .ACCMODE = .WRONLY }, 0) catch return false;
-    defer posix.close(fd);
-    _ = posix.write(fd, cmd) catch return false;
+    const fd = zio.open("window:control", .{ .ACCMODE = .WRONLY }, 0) catch return false;
+    defer zio.close(fd);
+    _ = zio.write(fd, cmd) catch return false;
     return true;
 }
 
@@ -208,12 +209,12 @@ pub fn controlf(comptime fmt: []const u8, args: anytype) bool {
 
 /// Write a command to `launch:ctl` and read the reply line into `reply`.
 pub fn launchCtl(cmd: []const u8, reply: []u8) ?[]const u8 {
-    const fd = posix.open("launch:ctl", .{ .ACCMODE = .RDWR }, 0) catch return null;
-    defer posix.close(fd);
-    _ = posix.write(fd, cmd) catch return null;
+    const fd = zio.open("launch:ctl", .{ .ACCMODE = .RDWR }, 0) catch return null;
+    defer zio.close(fd);
+    _ = zio.write(fd, cmd) catch return null;
     var n: usize = 0;
     while (n < reply.len) {
-        const got = posix.read(fd, reply[n..]) catch break;
+        const got = zio.read(fd, reply[n..]) catch break;
         if (got == 0) break;
         n += got;
         if (std.mem.indexOfScalar(u8, reply[0..n], '\n') != null) break;
