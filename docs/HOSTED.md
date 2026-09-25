@@ -91,6 +91,13 @@ nothing else.
   (a few minutes); later builds are fast. For Docker, build with
   `-Dhosted-toolchain=$(dirname $(which zig))` to copy the toolchain
   into the image.
+- **Remote viewing.** When the page is opened from another machine,
+  the web client asks for compressed updates. vncd's lossless deflate
+  encoding sends about 6× less than raw pixels. On the same machine,
+  raw pixels are used because they are faster. To reach a remote Zen
+  safely, use an SSH tunnel (`ssh -L 6080:127.0.0.1:6080 host`), which
+  also counts as "remote". Or start it with `--bind 0.0.0.0` on a
+  trusted network.
 - **Fit** scales the screen to the window. **⛶** switches to full screen.
 - **Log out, restart, shut down.** These work as on Zen. Shut Down stops the
   hosted system.

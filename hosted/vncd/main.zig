@@ -21,6 +21,11 @@ const std = @import("std");
 const abi = @import("abi");
 const zen = @import("zen");
 const rfb = @import("rfb.zig");
+const deflate = @import("deflate.zig");
+
+/// Private encoding understood by the built-in web client: u32 length and
+/// a raw DEFLATE stream of the rectangle's pixels (in the client's format).
+pub const enc_zen_deflate: i32 = 0x5A454E01;
 
 const posix = std.posix;
 const linux = std.os.linux;
@@ -275,6 +280,7 @@ const Client = struct {
     pf: rfb.PixelFormat = .native,
     enc_cursor: bool = false,
     enc_extkey: bool = false,
+    enc_deflate: bool = false,
     extkey_acked: bool = false,
     want_update: bool = false,
     full: bool = false,
@@ -600,10 +606,12 @@ fn handleRfb(c: *Client) void {
                         if (b.len < total) return;
                         c.enc_cursor = false;
                         c.enc_extkey = false;
+                        c.enc_deflate = false;
                         for (0..count) |i| {
                             const e = std.mem.readInt(i32, b[4 + i * 4 ..][0..4], .big);
                             if (e == -239) c.enc_cursor = true;
                             if (e == -258) c.enc_extkey = true;
+                            if (e == enc_zen_deflate) c.enc_deflate = true;
                         }
                         c.cursor_sent = 0;
                         break :blk total;
@@ -788,6 +796,7 @@ fn maybeUpdate(c: *Client) void {
         c.cursor_sent = cursor.serial;
     }
     if (!region.empty()) {
+        const hdr_at = msg.items.len;
         rectHeader(&msg, region.x, region.y, region.w, region.h, 0);
         const start = msg.items.len;
         const row_bytes = @as(usize, region.w) * bpp;
@@ -804,11 +813,33 @@ fn maybeUpdate(c: *Client) void {
             }
             c.pf.convertRow(src, msg.items[start + i * row_bytes ..][0..row_bytes]);
         }
+        // Compress for viewers that asked for it, when it pays off.
+        if (c.enc_deflate and row_bytes * region.h >= 1024) compressRect(&msg, hdr_at, start);
     }
     queue(c, msg.items);
     c.want_update = false;
     c.full = false;
     c.dirty = .{};
+}
+
+var compressor: ?deflate.Compressor = null;
+var packed_buf: std.ArrayList(u8) = .empty;
+
+/// Replace the raw pixels at msg[start..] with the private deflate encoding
+/// (keeping raw when compression does not help).
+fn compressRect(msg: *std.ArrayList(u8), hdr_at: usize, start: usize) void {
+    if (compressor == null) compressor = deflate.Compressor.init(gpa) catch return;
+    const raw = msg.items[start..];
+    packed_buf.clearRetainingCapacity();
+    compressor.?.compress(gpa, raw, &packed_buf) catch return;
+    if (packed_buf.items.len + 4 >= raw.len - raw.len / 10) return;
+    std.mem.writeInt(i32, msg.items[hdr_at + 8 ..][0..4], enc_zen_deflate, .big);
+    msg.shrinkRetainingCapacity(start);
+    var lb: [4]u8 = undefined;
+    std.mem.writeInt(u32, &lb, @intCast(packed_buf.items.len), .big);
+    // The raw pixels were larger, so the capacity is already there.
+    msg.appendSliceAssumeCapacity(&lb);
+    msg.appendSliceAssumeCapacity(packed_buf.items);
 }
 
 /// Forward new Zen clipboard text (from the Clip thread) to the viewers.

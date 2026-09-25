@@ -389,3 +389,7 @@ test "websocket accept and frames" {
     const r3 = try WsDecoder.decode(&close, &data, std.testing.allocator);
     try std.testing.expectEqual(WsEvent.close, r3.event);
 }
+
+test {
+    _ = @import("deflate.zig");
+}

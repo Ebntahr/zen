@@ -101,7 +101,25 @@ function requestUpdate(incremental) {
 }
 
 // ---- protocol ----------------------------------------------------------------
-function parse() {
+const ZEN_DEFLATE = 0x5A454E01;
+async function inflate(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// Messages are handled one at a time; decompression is asynchronous, so
+// data can arrive while a message is being handled: parse again then.
+let pumping = false, arrived = false;
+async function pump() {
+  arrived = true;
+  if (pumping) return;
+  pumping = true;
+  try {
+    while (arrived) { arrived = false; await parse(); }
+  } finally { pumping = false; }
+}
+
+async function parse() {
   for (;;) {
     if (state === "version") {
       const b = peek(12); if (!b) return;
@@ -125,21 +143,24 @@ function parse() {
       canvas.width = W; canvas.height = H; layout();
       // 32-bit little-endian RGBX: the bytes go straight into ImageData.
       send([0, 0, 0, 0, 32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 0, 8, 16, 0, 0, 0]);
-      const enc = [0, -239, -258];
+      // Compressed updates (vncd's private deflate encoding) for remote
+      // viewers; on this machine raw pixels are faster.
+      const local = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname);
+      const enc = (!local && "DecompressionStream" in window) ? [ZEN_DEFLATE, 0, -239, -258] : [0, -239, -258];
       send([2, 0, 0, enc.length].concat(...enc.map(be32)));
       requestUpdate(false);
       state = "msg"; connected = true; retry = 0;
       status("ok", "", ""); canvas.focus();
     } else {
       const b = peek(1); if (!b) return;
-      const used = message(); if (used === 0) return;
+      const used = await message(); if (used === 0) return;
       drop(used);
     }
   }
 }
 
 // Returns the bytes used by one complete server message, or 0 to wait.
-function message() {
+async function message() {
   const t = chunks[0][0];
   if (t === 0) { // FramebufferUpdate
     let b = peek(4); if (!b) return 0;
@@ -151,6 +172,7 @@ function message() {
       o += 12;
       if (e === 0) o += w * h * 4;
       else if (e === -239) o += w * h * 4 + ((w + 7) >> 3) * h;
+      else if (e === ZEN_DEFLATE) { b = peek(o + 4); if (!b) return 0; o += 4 + u32(b, o); }
       if (!peek(o)) return 0;
     }
     b = peek(o); o = 4;
@@ -160,6 +182,11 @@ function message() {
       if (e === 0) {
         if (w && h) ctx.putImageData(new ImageData(new Uint8ClampedArray(b.buffer, b.byteOffset + o, w * h * 4), w, h), x, y);
         o += w * h * 4;
+      } else if (e === ZEN_DEFLATE) {
+        const len = u32(b, o);
+        const px = await inflate(b.subarray(o + 4, o + 4 + len));
+        if (w && h && px.length >= w * h * 4) ctx.putImageData(new ImageData(new Uint8ClampedArray(px.buffer, 0, w * h * 4), w, h), x, y);
+        o += 4 + len;
       } else if (e === -239) {
         setCursor(b.subarray(o, o + w * h * 4 + ((w + 7) >> 3) * h), x, y, w, h);
         o += w * h * 4 + ((w + 7) >> 3) * h;
@@ -209,7 +236,7 @@ function connect() {
   const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/websockify";
   ws = new WebSocket(url, ["binary"]);
   ws.binaryType = "arraybuffer";
-  ws.onmessage = (ev) => { push(ev.data); parse(); };
+  ws.onmessage = (ev) => { push(ev.data); pump(); };
   ws.onclose = () => {
     ws = null; connected = false;
     status("bad", "Disconnected — reconnecting…", "انقطع الاتصال — إعادة المحاولة");
