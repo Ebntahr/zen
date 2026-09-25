@@ -14,6 +14,8 @@ pub const Appearance = struct {
     reduce_transparency: bool = false,
     /// 24-hour clock in the menu bar.
     clock_24h: bool = true,
+    /// Local time offset from UTC in minutes.
+    tz_offset_min: i32 = 0,
 };
 
 pub const SessionState = enum { login, active, locked };
@@ -122,6 +124,10 @@ pub const State = struct {
     now_ms: u64 = 0,
     /// Minute shown by the menu-bar clock (redraw when it changes).
     clock_minute: i64 = -1,
+    /// Bumped whenever the appearance changes (wallpaper must be redrawn).
+    appearance_serial: u32 = 0,
+    /// Pending text messages for loginwindow (read from window:control).
+    control_out: std.ArrayList(u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator, w: i32, h: i32) State {
         return .{

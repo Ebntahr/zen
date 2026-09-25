@@ -125,7 +125,7 @@ pub const Protocol = struct {
             win.app_id_len = app.id_len;
             @memcpy(win.app_id[0..app.id_len], app.id[0..app.id_len]);
         }
-        const handle = self.handles.insert(self.allocator, .{
+        const hid = self.handles.insert(self.allocator, .{
             .kind = .window,
             .window = win.id,
             .uid = req.uid,
@@ -143,7 +143,7 @@ pub const Protocol = struct {
         }
         win.pushEvent(.{ .kind = .appearance, .a = @intFromBool(self.state.appearance.dark), .b = @bitCast(themeAccent(self.state)), .c = @intFromBool(self.state.appearance.reduce_transparency) });
         self.state.invalidate(win.paintBounds());
-        self.reply(req.id, @intCast(handle), "");
+        self.reply(req.id, @intCast(hid), "");
     }
 
     pub fn themeAccent(state: *const st.State) u32 {
@@ -297,6 +297,22 @@ pub const Protocol = struct {
                 _ = self.pending.swapRemove(i);
                 continue;
             };
+            if (h.kind == .control) {
+                const data = self.state.control_out.items;
+                if (data.len == 0) {
+                    i += 1;
+                    continue;
+                }
+                if (p.fevent) {
+                    self.reply(p.id, sc.POLLIN, "");
+                } else {
+                    const n: usize = @intCast(@min(data.len, p.len));
+                    self.reply(p.id, @intCast(n), data[0..n]);
+                    self.state.control_out.replaceRange(self.allocator, 0, n, "") catch {};
+                }
+                _ = self.pending.swapRemove(i);
+                continue;
+            }
             const win = self.state.manager.get(h.window) orelse {
                 // Window gone: wake the reader with EOF.
                 self.reply(p.id, 0, "");
@@ -365,7 +381,11 @@ pub const Protocol = struct {
                     h.read_pos += n;
                     self.reply(req.id, @intCast(n), rest[0..n]);
                 },
-                .control => self.reply(req.id, 0, ""),
+                .control => {
+                    if (h.uid != 0) return self.reply(req.id, 0, "");
+                    self.pending.append(self.allocator, .{ .id = req.id, .handle = req.handle, .len = req.len, .fevent = false }) catch return self.fail(req.id, .NOMEM);
+                    self.flushEvents();
+                },
             },
             .write => switch (h.kind) {
                 .window => {
@@ -393,7 +413,7 @@ pub const Protocol = struct {
             },
             .funmap => {},
             .fevent => {
-                if (h.kind != .window) return self.reply(req.id, sc.POLLIN | sc.POLLOUT, "");
+                if (h.kind == .clipboard) return self.reply(req.id, sc.POLLIN | sc.POLLOUT, "");
                 self.pending.append(self.allocator, .{ .id = req.id, .handle = req.handle, .len = 0, .fevent = true }) catch return self.fail(req.id, .NOMEM);
                 self.flushEvents();
             },

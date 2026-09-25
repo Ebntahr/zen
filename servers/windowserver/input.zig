@@ -174,7 +174,6 @@ pub const Input = struct {
                 event(w, .close_request, 0, 0, 0, 0, 0);
             }
         }
-        _ = self;
     }
 
     fn buttonDown(self: *Input, button: i32) void {
@@ -281,7 +280,6 @@ pub const Input = struct {
         protocol.Protocol.resizeBuffer(win);
         event(win, .resize, 0, win.content.w, win.content.h, 0, 0);
         state.invalidate(win.paintBounds());
-        _ = self;
     }
 
     /// Deliver the deferred resize after interactive resizing.
@@ -343,7 +341,6 @@ pub const Input = struct {
         for (state.manager.windows.items) |w| {
             if (w.owner_pid == pid) event(w, .quit_request, 0, 0, 0, 0, 0);
         }
-        _ = self;
     }
 
     fn hideApp(self: *Input) void {
@@ -357,7 +354,6 @@ pub const Input = struct {
             }
         }
         state.manager.focusTopmost();
-        _ = self;
     }
 
     /// Match a key against the focused app's menu shortcuts.
@@ -377,7 +373,6 @@ pub const Input = struct {
                 return true;
             }
         }
-        _ = self;
         return false;
     }
 

@@ -22,6 +22,9 @@ const libs = [_]Lib{
     .{ .name = "font", .path = "lib/font/root.zig" },
     .{ .name = "vt", .path = "lib/vt/root.zig" },
     .{ .name = "ext2", .path = "lib/ext2/root.zig" },
+    .{ .name = "gfx", .path = "lib/gfx/root.zig" },
+    .{ .name = "icons", .path = "lib/icons/root.zig", .deps = &.{"gfx"} },
+    .{ .name = "ui", .path = "lib/ui/root.zig", .deps = &.{ "gfx", "font", "abi", "zen" } },
 };
 
 const Program = struct {
@@ -36,6 +39,7 @@ const Program = struct {
 const programs = [_]Program{
     .{ .name = "init", .path = "servers/init/main.zig", .deps = &.{ "abi", "zen" }, .dir = "sbin" },
     .{ .name = "getty", .path = "userland/getty/main.zig", .deps = &.{"zen"}, .dir = "usr/sbin" },
+    .{ .name = "windowserver", .path = "servers/windowserver/main.zig", .deps = &.{ "abi", "zen", "gfx", "ui", "icons", "font" }, .dir = "System/Library/Servers" },
     .{ .name = "fsd", .path = "servers/fsd/main.zig", .deps = &.{ "abi", "zen", "ext2" }, .dir = "System/Library/Servers" },
     .{ .name = "ptyd", .path = "servers/ptyd/main.zig", .deps = &.{ "abi", "zen" }, .dir = "System/Library/Servers" },
     .{ .name = "virtio-blkd", .path = "drivers/virtio-blk/main.zig", .deps = &.{ "abi", "zen", "virtio" }, .dir = "System/Library/Drivers" },
