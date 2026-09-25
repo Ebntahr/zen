@@ -1,6 +1,6 @@
 //! Host previews of TextEdit.
 //!
-//!   tools/zigmod run apps/TextEdit/preview.zig -O ReleaseFast -- [out_dir]
+//!   tools/zigmod run apps/TextEdit/preview.zig -O ReleaseFast -- [out_dir] [WxH]
 //!
 //! Renders a sample document (with a selection, the caret, mono mode, the
 //! Save As sheet and the unsaved-changes alert), composited over the
@@ -11,8 +11,8 @@ const ui = @import("ui");
 const app = @import("app.zig");
 const shot = @import("shot.zig");
 
-const W = 700;
-const H = 520;
+const default_w = 700;
+const default_h = 520;
 const docs = "/tmp/zen_apps/sample_textedit/Documents";
 
 const sample =
@@ -25,7 +25,7 @@ const sample =
     "\t\u{2022} TextEdit, a plain-text editor with undo, word count and Plain Text Mono.\n" ++
     "\t\u{2022} Liquid Glass materials throughout the desktop.\n" ++
     "\n" ++
-    "Known issues: the kernel is still being written, so the system boots in the emulator only. \u{00DC}n\u{00EF}c\u{00F6}d\u{00E9} text \u{2014} na\u{00EF}ve caf\u{00E9}, \u{0395}\u{03BB}\u{03BB}\u{03AC}\u{03B4}\u{03B1}, \u{041F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442} \u{2014} is edited safely as UTF\u{2011}8.\n";
+    "Known issues: the kernel is still being written, so the system does not boot yet. \u{00DC}n\u{00EF}c\u{00F6}d\u{00E9} text \u{2014} na\u{00EF}ve caf\u{00E9}, \u{0395}\u{03BB}\u{03BB}\u{03AC}\u{03B4}\u{03B1}, \u{041F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442} \u{2014} is edited safely as UTF\u{2011}8.\n";
 
 const code =
     \\const std = @import("std");
@@ -59,6 +59,14 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(gpa);
     defer std.process.argsFree(gpa, args);
     const out_dir = if (args.len > 1) args[1] else "/tmp/zen_apps";
+    // Optional window size, e.g. "460x300", to check small layouts.
+    var W: i32 = default_w;
+    var H: i32 = default_h;
+    if (args.len > 2) {
+        var it = std.mem.splitScalar(u8, args[2], 'x');
+        W = try std.fmt.parseInt(i32, it.next() orelse "", 10);
+        H = try std.fmt.parseInt(i32, it.next() orelse "", 10);
+    }
     try std.fs.cwd().makePath(out_dir);
     try writeDocs();
 
@@ -66,7 +74,7 @@ pub fn main() !void {
     defer fonts.deinit();
 
     const sel_a = std.mem.indexOf(u8, sample, "three ideas").?;
-    const sel_b = std.mem.indexOf(u8, sample, ", and POSIX").? ;
+    const sel_b = std.mem.indexOf(u8, sample, ", and POSIX").?;
     const caret = std.mem.indexOf(u8, sample, "Liquid Glass").? + 6;
     const code_caret = std.mem.indexOf(u8, code, "hello, ").? + 5;
     const shots = [_]Shot{

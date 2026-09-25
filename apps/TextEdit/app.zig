@@ -216,6 +216,11 @@ pub const App = struct {
         std.mem.copyForwards(u8, self.path_buf[0..self.path_len], p[0..self.path_len]);
     }
 
+    fn defaultSaveName(self: *const App) []const u8 {
+        if (self.docPath()) |p| return std.fs.path.basename(p);
+        return "Untitled.txt";
+    }
+
     fn displayName(self: *const App) []const u8 {
         if (self.docPath()) |p| return std.fs.path.basename(p);
         return "Untitled";
@@ -356,8 +361,7 @@ pub const App = struct {
         @memcpy(db[0..dir.len], dir);
         self.setSheetDir(db[0..dir.len]);
         if (kind == .save) {
-            var nb: [256]u8 = undefined;
-            const name = if (self.docPath()) |p| std.fs.path.basename(p) else (std.fmt.bufPrint(&nb, "Untitled.txt", .{}) catch "Untitled.txt");
+            const name = self.defaultSaveName();
             self.field.set(self.allocator, name);
             // Select the name without the extension.
             self.field.anchor = 0;
@@ -386,16 +390,14 @@ pub const App = struct {
         var tb: [max_path]u8 = undefined;
         const target = self.sheetTarget(&tb) orelse return;
         // A folder: browse into it.
-        if (std.fs.cwd().openDir(target, .{})) |d| {
+        if (std.fs.cwd().openDir(target, .{ .iterate = true })) |d| {
             var dd = d;
             dd.close();
             self.setSheetDir(target);
-            self.field.set(self.allocator, if (self.sheet == .save) self.displayName() else "");
+            self.field.set(self.allocator, if (self.sheet == .save) self.defaultSaveName() else "");
             return;
         } else |_| {}
         if (self.sheet == .open) {
-            const kind = self.sheet;
-            _ = kind;
             const data_ok = std.fs.cwd().access(target, .{});
             if (data_ok) |_| {
                 self.sheet = .none;
@@ -634,7 +636,10 @@ pub const App = struct {
 
         switch (self.sheet) {
             .none => {},
-            .open, .save => self.drawFileSheet(u),
+            .open, .save => {
+                u.focus = hashId("sheet-field");
+                self.drawFileSheet(u);
+            },
             .confirm => self.drawConfirm(u),
             .alert => self.drawAlert(u),
         }

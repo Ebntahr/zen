@@ -301,7 +301,8 @@ pub const App = struct {
         self.last_poll = std.time.milliTimestamp();
         self.sel = null;
         self.refilter();
-        if (keep_len > 0) self.selectName(keep[0..keep_len]);
+        // Keep the selection across refreshes without scrolling to it.
+        if (keep_len > 0) self.selectNameEx(keep[0..keep_len], false);
         self.needs_redraw = true;
     }
 
@@ -320,10 +321,14 @@ pub const App = struct {
     }
 
     fn selectName(self: *App, name: []const u8) void {
+        self.selectNameEx(name, true);
+    }
+
+    fn selectNameEx(self: *App, name: []const u8, reveal: bool) void {
         for (self.order.items) |i| {
             if (std.mem.eql(u8, self.listing.entries[i].name, name)) {
                 self.sel = i;
-                self.ensure_visible = true;
+                if (reveal) self.ensure_visible = true;
                 return;
             }
         }
@@ -356,6 +361,8 @@ pub const App = struct {
         self.reload(u);
         if (from_len > 0) self.selectName(from[0..from_len]);
         u.win.setTitle(fs.displayName(self.loc()));
+        // Back/Forward/New Folder availability changed.
+        self.refreshMenu(u);
     }
 
     fn goBack(self: *App, u: *Ui) void {
@@ -449,16 +456,16 @@ pub const App = struct {
     }
 
     fn openInTextEdit(self: *App, full: []const u8, name: []const u8) void {
-        // The path travels as a percent-encoded file: URL so that spaces
-        // survive launchd's word splitting; TextEdit decodes it.
+        // launchd splits its command on spaces, so a path containing one
+        // travels as a percent-encoded file: URL (TextEdit decodes it).
         var enc: [fs.max_path * 3]u8 = undefined;
-        const encoded = zen.url.encode(full, &enc);
         var cmd: [fs.max_path * 3 + 48]u8 = undefined;
         const arg_is_url = fs.isUrl(full);
-        const line = if (arg_is_url)
-            std.fmt.bufPrint(&cmd, "open com.zen.TextEdit {s}\n", .{full}) catch return
+        const needs_url = !arg_is_url and std.mem.indexOfAny(u8, full, " \t%") != null;
+        const line = if (needs_url)
+            std.fmt.bufPrint(&cmd, "open com.zen.TextEdit file:{s}\n", .{zen.url.encode(full, &enc)}) catch return
         else
-            std.fmt.bufPrint(&cmd, "open com.zen.TextEdit file:{s}\n", .{encoded}) catch return;
+            std.fmt.bufPrint(&cmd, "open com.zen.TextEdit {s}\n", .{full}) catch return;
         var reply_buf: [512]u8 = undefined;
         const reply = fs.launchCtl(line, &reply_buf) catch |err| {
             self.setAlert("\u{201C}{s}\u{201D} can\u{2019}t be opened: the launch service is not available ({s}).", .{ name, @errorName(err) });
@@ -540,6 +547,16 @@ pub const App = struct {
         self.sel = null;
         self.reload(u);
         self.selectName(newb[0..n]);
+    }
+
+    /// A click on another item ends a rename; keep that item selected.
+    fn commitRenameThenSelect(self: *App, u: *Ui, idx: u32) void {
+        var nb: [256]u8 = undefined;
+        const name = self.listing.entries[idx].name;
+        const n = @min(name.len, nb.len);
+        @memcpy(nb[0..n], name[0..n]);
+        self.commitRename(u);
+        self.selectName(nb[0..n]);
     }
 
     fn trashSelected(self: *App, u: *Ui) void {
@@ -808,7 +825,6 @@ pub const App = struct {
                 self.navigate(u, p, true);
             },
         }
-        if (id == M.back or id == M.forward or id == M.enclosing or id >= M.go_place or id == M.goto) self.refreshMenu(u);
     }
 
     pub fn shouldClose(self: *App, u: *Ui) bool {
@@ -830,10 +846,14 @@ pub const App = struct {
         if (self.needs_redraw) return false;
         if (u.key_count > 0 or u.text_len > 0 or u.mouse_pressed or u.mouse_released or u.right_pressed) return false;
         if (u.scroll_dx != 0 or u.scroll_dy != 0 or u.menu_id != null or u.resized) return false;
-        if (u.mouse_x != self.last_mx or u.mouse_y != self.last_my) return false;
         if (u.focused != self.last_focused or u.theme.dark != self.last_dark or u.theme.accent != self.last_accent) return false;
         if (u.width() != self.last_w or u.height() != self.last_h) return false;
-        return true;
+        if (u.mouse_x == self.last_mx and u.mouse_y == self.last_my) return true;
+        // Pointer motion over the files (no hover effects there) needs no redraw.
+        if (u.mouse_down or self.sheet != .none) return false;
+        const top = TOOLBAR_H + (if (self.alert_len > 0) @as(i32, 44) else 0) + HEADER_H + 2;
+        const files = Rect.init(SIDEBAR_W, top, u.width() - SIDEBAR_W - 14, u.height() - STATUS_H - top);
+        return files.contains(u.mouse_x, u.mouse_y) and files.contains(self.last_mx, self.last_my);
     }
 
     /// Refresh the listing when the folder changed on disk.
@@ -852,6 +872,8 @@ pub const App = struct {
 
     pub fn frame(self: *App, u: *Ui) void {
         if (self.isIdle(u)) {
+            self.last_mx = u.mouse_x;
+            self.last_my = u.mouse_y;
             self.pollChanges(u);
             if (!self.needs_redraw) {
                 u.cursor = u.last_cursor;
@@ -897,13 +919,17 @@ pub const App = struct {
 
         switch (self.sheet) {
             .none => {},
-            .goto => self.drawGotoSheet(u),
+            .goto => {
+                u.focus = hashId("goto");
+                self.drawGotoSheet(u);
+            },
             .info => self.drawInfo(u),
         }
 
-        // Unified title area: presses on empty toolbar space move the window.
-        if (u.mouse_pressed and u.hot == 0 and u.mouse_y < TOOLBAR_H and self.sheet == .none) {
-            if (u.click_count == 2) u.win.command(.zoom, "") else u.win.beginMove();
+        // Unified title area: presses on empty toolbar space move the window
+        // (the toolkit zooms on a double-click there).
+        if (u.mouse_pressed and u.hot == 0 and u.mouse_y < TOOLBAR_H and self.sheet == .none and u.click_count < 2) {
+            u.win.beginMove();
         }
     }
 
@@ -1267,7 +1293,7 @@ pub const App = struct {
             }
             const gen = self.generation;
             if (hit) |idx| {
-                if (self.renaming and self.sel != idx) self.commitRename(u);
+                if (self.renaming and self.sel != idx) self.commitRenameThenSelect(u, idx);
                 if (gen == self.generation) {
                     self.sel = idx;
                     if (u.click_count >= 2) self.openEntry(u, &self.listing.entries[idx]);
@@ -1326,8 +1352,20 @@ pub const App = struct {
             u.text(Rect.init(cell.x + 2, ly, cell_w - 4, LABEL_LINE), line1, .{ .size = LABEL_SIZE, .color = fg, .@"align" = .center, .truncate = false });
             if (line2.len > 0) u.text(Rect.init(cell.x + 2, ly + LABEL_LINE, cell_w - 4, LABEL_LINE), line2, .{ .size = LABEL_SIZE, .color = fg, .@"align" = .center, .truncate = false });
         }
+        scrollEdge(u, area, self.scroll.offset);
         u.endScroll(area, &self.scroll, old);
         if (n == 0) self.drawEmpty(u, area);
+    }
+
+    /// Scroll-edge effect: content fades out under the toolbar / header.
+    fn scrollEdge(u: *Ui, area: Rect, offset: f32) void {
+        if (offset <= 0) return;
+        const bg = u.theme.content_bg;
+        const g = gfx.Paint.verticalGradient(gfx.RectF.init(@floatFromInt(area.x), @floatFromInt(area.y), @floatFromInt(area.w), 16), &.{
+            .{ .pos = 0, .color = pm(bg) },
+            .{ .pos = 1, .color = pm(bg & 0x00FFFFFF) },
+        });
+        u.canvas.fillRect(Rect.init(area.x, area.y, area.w - 12, 16), &g);
     }
 
     fn drawRenameField(self: *App, u: *Ui, r: Rect) void {
@@ -1444,7 +1482,7 @@ pub const App = struct {
             const gen = self.generation;
             if (row >= 0 and row < @as(i32, @intCast(n))) {
                 const idx = self.order.items[@intCast(row)];
-                if (self.renaming and self.sel != idx) self.commitRename(u);
+                if (self.renaming and self.sel != idx) self.commitRenameThenSelect(u, idx);
                 if (gen == self.generation) {
                     self.sel = idx;
                     if (u.click_count >= 2) self.openEntry(u, &self.listing.entries[idx]);
@@ -1487,6 +1525,7 @@ pub const App = struct {
             u.text(Rect.init(cols.size_x, ry, cols.size_w - 12, ROW_H), size_s, .{ .size = 12, .color = fg2, .@"align" = .right });
             if (cols.kind_w > 0) u.text(Rect.init(cols.kind_x + 4, ry, cols.kind_w - 8, ROW_H), e.kind_label, .{ .size = 12, .color = fg2 });
         }
+        scrollEdge(u, body, self.scroll.offset);
         u.endScroll(body, &self.scroll, old);
         if (n == 0) self.drawEmpty(u, body);
     }
@@ -1532,7 +1571,8 @@ pub const App = struct {
         const t = u.theme;
         const w: i32 = 440;
         const h: i32 = 168;
-        const r = Rect.init(SIDEBAR_W + @divTrunc(u.width() - SIDEBAR_W - w, 2), 40, w, h);
+        const x = @max(10, @min(SIDEBAR_W + @divTrunc(u.width() - SIDEBAR_W - w, 2), u.width() - w - 10));
+        const r = Rect.init(x, 40, w, h);
         sheetPanel(u, r);
         u.text(Rect.init(r.x + 20, r.y + 16, r.w - 40, 20), "Go to Folder", .{ .size = 13, .weight = .bold, .color = t.label });
         const res = u.textField("goto", Rect.init(r.x + 20, r.y + 46, r.w - 40, 28), &self.goto_field, .{ .placeholder = "Path or URL" });
@@ -1555,8 +1595,9 @@ pub const App = struct {
     fn drawInfo(self: *App, u: *Ui) void {
         const t = u.theme;
         const w: i32 = 320;
-        const h: i32 = 382;
-        const r = Rect.init(SIDEBAR_W + @divTrunc(u.width() - SIDEBAR_W - w, 2), @max(20, @divTrunc(u.height() - h, 2)), w, h);
+        const h: i32 = @min(382, u.height() - 20);
+        const x = @max(10, @min(SIDEBAR_W + @divTrunc(u.width() - SIDEBAR_W - w, 2), u.width() - w - 10));
+        const r = Rect.init(x, @max(10, @divTrunc(u.height() - h, 2)), w, h);
         sheetPanel(u, r);
         var name: []const u8 = fs.displayName(self.loc());
         var kind: []const u8 = "Folder";
@@ -1605,6 +1646,9 @@ pub const App = struct {
             .{ "Group:", self.info.group[0..self.info.group_len] },
         };
         var y = icon_y + @as(i32, ICON) + 26;
+        // Tighten the rows when the window is short.
+        const room = r.bottom() - 56 - y;
+        const row_h: i32 = std.math.clamp(@divTrunc(room, @as(i32, rows.len)), 17, 26);
         for (rows) |row| {
             u.text(Rect.init(r.x + 16, y, 96, 22), row[0], .{ .size = 12, .weight = .medium, .color = t.secondary_label, .@"align" = .right });
             const mono = std.mem.eql(u8, row[0], "Permissions:");
@@ -1613,7 +1657,7 @@ pub const App = struct {
             } else {
                 u.text(Rect.init(r.x + 120, y, r.w - 136, 22), row[1], .{ .size = 12, .color = t.label });
             }
-            y += 26;
+            y += row_h;
         }
         if (u.button("info-done", Rect.init(r.right() - 20 - 90, r.bottom() - 46, 90, 28), "Done", .{ .style = .primary })) {
             self.sheet = .none;

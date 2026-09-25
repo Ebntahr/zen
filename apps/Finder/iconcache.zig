@@ -229,8 +229,8 @@ pub const IconCache = struct {
             },
             .code => {
                 const rows = [_]struct { f32, f32, u32 }{
-                    .{ 0, 30, rgb(0xAF52DE) }, .{ 6, 26, rgb(0x007AFF) }, .{ 6, 20, rgb(0x8E8E93) },
-                    .{ 12, 22, rgb(0x34C759) }, .{ 6, 16, rgb(0xFF9500) },  .{ 0, 10, rgb(0xAF52DE) },
+                    .{ 0, 30, rgb(0xAF52DE) },  .{ 6, 26, rgb(0x007AFF) }, .{ 6, 20, rgb(0x8E8E93) },
+                    .{ 12, 22, rgb(0x34C759) }, .{ 6, 16, rgb(0xFF9500) }, .{ 0, 10, rgb(0xAF52DE) },
                 };
                 var y: f32 = 34;
                 for (rows) |row| {

@@ -1,6 +1,6 @@
 //! Host previews of Finder.
 //!
-//!   tools/zigmod run apps/Finder/preview.zig -O ReleaseFast -- [out_dir]
+//!   tools/zigmod run apps/Finder/preview.zig -O ReleaseFast -- [out_dir] [WxH]
 //!
 //! Builds a sample home folder under /tmp/zen_apps/sample (folders, text
 //! and image files, real .app bundles with Info.conf) and renders Finder in
@@ -11,8 +11,8 @@ const ui = @import("ui");
 const app = @import("app.zig");
 const shot = @import("shot.zig");
 
-const W = 900;
-const H = 560;
+const default_w = 900;
+const default_h = 560;
 /// 2026-09-25 15:30 UTC: the "now" of the previews.
 const NOW: i64 = 1790350200;
 const root = "/tmp/zen_apps/sample";
@@ -23,11 +23,11 @@ const File = struct { path: []const u8, body: []const u8 = "", age_min: i64 = 60
 fn writeTree(a: std.mem.Allocator) !void {
     std.fs.cwd().deleteTree(root) catch {};
     const dirs = [_][]const u8{
-        "Applications",                    "System/Library",                          "etc",
-        "Users/zen/Desktop",               "Users/zen/Documents/Projects/zen-os",     "Users/zen/Documents/Invoices",
-        "Users/zen/Documents/Recipes",     "Users/zen/Downloads/Photos",              "Users/zen/Downloads/Projects",
-        "Users/zen/Pictures/Wallpapers",   "Users/zen/Music/Playlists",               "Users/zen/Movies",
-        "Users/zen/Library/Preferences",   "Users/zen/Public",
+        "Applications",                  "System/Library",                      "etc",
+        "Users/zen/Desktop",             "Users/zen/Documents/Projects/zen-os", "Users/zen/Documents/Invoices",
+        "Users/zen/Documents/Recipes",   "Users/zen/Downloads/Photos",          "Users/zen/Downloads/Projects",
+        "Users/zen/Pictures/Wallpapers", "Users/zen/Music/Playlists",           "Users/zen/Movies",
+        "Users/zen/Library/Preferences", "Users/zen/Public",
     };
     for (dirs) |d| try std.fs.cwd().makePath(try std.fmt.allocPrint(a, "{s}/{s}", .{ root, d }));
 
@@ -80,9 +80,9 @@ fn writeTree(a: std.mem.Allocator) !void {
     }
     // Folder dates.
     const dated = [_]struct { []const u8, i64 }{
-        .{ "Users/zen/Documents/Projects", 60 * 5 },       .{ "Users/zen/Documents/Invoices", 60 * 24 * 8 },
-        .{ "Users/zen/Documents/Recipes", 60 * 24 * 60 },  .{ "Users/zen/Downloads/Photos", 60 * 24 * 2 },
-        .{ "Users/zen/Downloads/Projects", 60 * 24 * 15 }, .{ "Users/zen/Downloads/Calculator.app", 60 * 24 * 20 },
+        .{ "Users/zen/Documents/Projects", 60 * 5 },           .{ "Users/zen/Documents/Invoices", 60 * 24 * 8 },
+        .{ "Users/zen/Documents/Recipes", 60 * 24 * 60 },      .{ "Users/zen/Downloads/Photos", 60 * 24 * 2 },
+        .{ "Users/zen/Downloads/Projects", 60 * 24 * 15 },     .{ "Users/zen/Downloads/Calculator.app", 60 * 24 * 20 },
         .{ "Users/zen/Downloads/Terminal.app", 60 * 24 * 21 }, .{ "Users/zen/Downloads/Zen Setup.app", 60 * 50 },
     };
     for (dated) |d| {
@@ -110,6 +110,14 @@ pub fn main() !void {
 
     const args = try std.process.argsAlloc(a);
     const out_dir = if (args.len > 1) args[1] else "/tmp/zen_apps";
+    // Optional window size, e.g. "600x380", to check small layouts.
+    var W: i32 = default_w;
+    var H: i32 = default_h;
+    if (args.len > 2) {
+        var it = std.mem.splitScalar(u8, args[2], 'x');
+        W = try std.fmt.parseInt(i32, it.next() orelse "", 10);
+        H = try std.fmt.parseInt(i32, it.next() orelse "", 10);
+    }
     try std.fs.cwd().makePath(out_dir);
     try writeTree(a);
 

@@ -235,9 +235,9 @@ fn folderMark(loc: []const u8, name: []const u8, home: []const u8) FolderMark {
     if (std.mem.eql(u8, loc, "/Users")) return .home;
     if (!std.mem.eql(u8, std.mem.trimRight(u8, loc, "/"), std.mem.trimRight(u8, home, "/"))) return .none;
     const map = [_]struct { []const u8, FolderMark }{
-        .{ "Desktop", .desktop },       .{ "Documents", .documents }, .{ "Downloads", .downloads },
-        .{ "Applications", .applications }, .{ "Pictures", .pictures }, .{ "Music", .music },
-        .{ "Movies", .movies },         .{ "Library", .library },     .{ ".Trash", .trash },
+        .{ "Desktop", .desktop },           .{ "Documents", .documents }, .{ "Downloads", .downloads },
+        .{ "Applications", .applications }, .{ "Pictures", .pictures },   .{ "Music", .music },
+        .{ "Movies", .movies },             .{ "Library", .library },     .{ ".Trash", .trash },
     };
     for (map) |m| if (std.mem.eql(u8, m[0], name)) return m[1];
     return .none;
@@ -369,7 +369,6 @@ fn loadInto(a: std.mem.Allocator, list: *std.ArrayList(Entry), listing: *Listing
         try list.append(a, e);
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Sorting
