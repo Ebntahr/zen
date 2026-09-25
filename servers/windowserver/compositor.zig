@@ -75,11 +75,36 @@ pub const Compositor = struct {
             3 => .aurora,
             else => .golden_gate,
         };
+        var path_buf: [128]u8 = undefined;
+        const cache = std.fmt.bufPrint(&path_buf, "/var/cache/zen/wallpaper-{s}-{d}x{d}.raw", .{ @tagName(v), self.width, self.height }) catch "";
+        if (loadCache(cache, self.wallpaper.pixels, self.wallpaper_blur.pixels)) return;
         const wc = self.wallpaper.canvas();
         gfx.wallpaper.render(wc, self.allocator, v, .{ .detail = 2 }) catch wc.clear(Color.fromHex(0x2C3E66));
         const bc = self.wallpaper_blur.canvas();
         bc.blitOpaque(wc, 0, 0);
         gfx.effects.blurFast(bc, self.allocator, bc.bounds(), 28) catch {};
+        saveCache(cache, self.wallpaper.pixels, self.wallpaper_blur.pixels);
+    }
+
+    /// Cached wallpaper: the sharp image followed by the blurred one.
+    fn loadCache(path: []const u8, sharp: []u32, blurred: []u32) bool {
+        if (path.len == 0) return false;
+        const f = std.fs.cwd().openFile(path, .{}) catch return false;
+        defer f.close();
+        const a = std.mem.sliceAsBytes(sharp);
+        const b = std.mem.sliceAsBytes(blurred);
+        const n1 = f.readAll(a) catch return false;
+        const n2 = f.readAll(b) catch return false;
+        return n1 == a.len and n2 == b.len;
+    }
+
+    fn saveCache(path: []const u8, sharp: []const u32, blurred: []const u32) void {
+        if (path.len == 0) return;
+        std.fs.cwd().makePath("/var/cache/zen") catch return;
+        const f = std.fs.cwd().createFile(path, .{}) catch return;
+        defer f.close();
+        f.writeAll(std.mem.sliceAsBytes(sharp)) catch return;
+        f.writeAll(std.mem.sliceAsBytes(blurred)) catch return;
     }
 
     fn shadowFor(self: *Compositor, win: *const wm.Window, focused: bool) *const gfx.ShadowMask {
